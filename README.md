@@ -8,6 +8,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/khaledalam/flight-signals/actions/workflows/ci.yml"><img src="https://github.com/khaledalam/flight-signals/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/php-%3E%3D8.5-8892BF?logo=php&logoColor=white" alt="PHP >= 8.5">
   <img src="https://img.shields.io/badge/Laravel-12-FF2D20?logo=laravel&logoColor=white" alt="Laravel">
   <img src="https://img.shields.io/badge/tests-58%20passing-brightgreen?logo=pestphp" alt="Tests">
