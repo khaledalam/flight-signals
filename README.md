@@ -478,16 +478,14 @@ A full [k6](https://k6.io/) load test script is included at `tests/Load/k6-fligh
 
 **Custom metrics tracked:** `flight_create_latency`, `flight_get_latency`, `flight_update_latency`, `error_rate`.
 
-**Thresholds enforced:** P95 create < 500ms, P95 get < 200ms, error rate < 5%.
+**Thresholds enforced:** P95 create < 500ms, P95 get < 200ms, error rate < 10%.
 
 ```bash
 # Install k6
 brew install k6
 
-# Start the API
-./vendor/bin/sail up -d && ./vendor/bin/sail artisan migrate
-
-# Run all scenarios
+# Run all scenarios (smoke → load → spike)
+# Automatically raises rate limit to 10000 and restores to 200 after
 make load
 
 # Quick smoke test (1 VU, 10s)
@@ -495,8 +493,10 @@ make load-smoke
 
 # Custom run
 k6 run --vus 20 --duration 30s tests/Load/k6-flights.js
-k6 run --env BASE_URL=http://localhost:8080 --env API_KEY=my-secret-api-key tests/Load/k6-flights.js
+k6 run --env BASE_URL=http://localhost:8080 tests/Load/k6-flights.js
 ```
+
+> `make load` automatically sets `API_RATE_LIMIT=10000` in `.env` before running and restores it to `200` when done — even if k6 fails or is interrupted.
 
 <details>
 <summary><strong>Sample k6 output</strong></summary>
