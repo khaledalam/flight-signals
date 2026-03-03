@@ -52,37 +52,47 @@
 
 </details>
 
-```bash
-# Clone and install
-git clone <repo-url> flight-signals && cd flight-signals
-composer install
+**Using Make:**
 
-# Configure
+```bash
+git clone https://github.com/khaledalam/flight-signals.git && cd flight-signals
+composer install
 cp .env.example .env
 php artisan key:generate
 
-# Start everything (app + MySQL + Redis + Horizon worker)
-./vendor/bin/sail up -d
+make up        # Start app + MySQL + Redis + Horizon
+make migrate   # Run migrations
+```
 
-# Run migrations
+**Without Make:**
+
+```bash
+git clone https://github.com/khaledalam/flight-signals.git && cd flight-signals
+composer install
+cp .env.example .env
+php artisan key:generate
+
+./vendor/bin/sail up -d
 ./vendor/bin/sail artisan migrate
 ```
 
 The API is now live at **http://localhost:8080** and Swagger UI at **http://localhost:8080/docs**.
 
-> **Note:** The port is controlled by `APP_PORT` in `.env` (default: `8080`). All URLs below use port `8080` — adjust if you changed it.
+> **Note:** The port is controlled by `APP_PORT` in `.env` (default: `8080`). Adjust URLs if you change it.
 
-<details>
-<summary><strong>Horizon Dashboard</strong></summary>
-
-Visit **http://localhost:8080/horizon** to monitor queues, jobs, and failed jobs in real time.
-
-</details>
+| Service | URL |
+|---------|-----|
+| API | http://localhost:8080/api/flights |
+| Swagger UI | http://localhost:8080/docs |
+| Horizon | http://localhost:8080/horizon |
+| Health check | http://localhost:8080/up |
 
 <details>
 <summary><strong>Shut down</strong></summary>
 
 ```bash
+make down
+# or
 ./vendor/bin/sail down
 ```
 
@@ -123,9 +133,10 @@ make cover
 
 ### 3. Test the API Manually
 
-The default API key is configured in `.env` as `API_KEY` (default: `your-secret-api-key-here`). Use it in the `Api-Key` header.
+The default API key is configured in `.env` as `API_KEY`. Use it in the `Api-Key` header.
 
-**Create a flight:**
+<details>
+<summary><strong>POST /api/flights</strong> — Create a flight</summary>
 
 ```bash
 curl -s -X POST http://localhost:8080/api/flights \
@@ -142,17 +153,41 @@ curl -s -X POST http://localhost:8080/api/flights \
   }' | jq .
 ```
 
-**Get a flight:**
+Response `201`:
+```json
+{ "flightId": "019cb527-4564-73da-b8c2-65b369738eda" }
+```
+
+</details>
+
+<details>
+<summary><strong>GET /api/flights/{flightId}</strong> — Get a flight</summary>
 
 ```bash
-curl -s http://localhost:8080/api/flights/{flightId} \
+curl -s http://localhost:8080/api/flights/019cb527-4564-73da-b8c2-65b369738eda \
   -H "Api-Key: your-secret-api-key-here" | jq .
 ```
 
-**Update a flight (async):**
+Response `200`:
+```json
+{
+  "legs": [{
+    "segments": [{
+      "origin": "BCN", "destination": "LON",
+      "departure": "2026-06-09T06:45:00", "arrival": "2026-06-09T10:55:00",
+      "cabinClass": "Y", "airline": "UA", "flightNumber": "101"
+    }]
+  }]
+}
+```
+
+</details>
+
+<details>
+<summary><strong>PUT /api/flights/{flightId}</strong> — Update a flight (async)</summary>
 
 ```bash
-curl -s -X PUT http://localhost:8080/api/flights/{flightId} \
+curl -s -X PUT http://localhost:8080/api/flights/019cb527-4564-73da-b8c2-65b369738eda \
   -H "Content-Type: application/json" \
   -H "Api-Key: your-secret-api-key-here" \
   -H "Idempotency-Key: $(uuidgen)" \
@@ -165,10 +200,29 @@ curl -s -X PUT http://localhost:8080/api/flights/{flightId} \
       }]
     }]
   }'
-# => 204 No Content
 ```
 
-### 4. Useful Makefile Shortcuts
+Response: `204 No Content`
+
+</details>
+
+### 4. Container Shell Access
+
+```bash
+make shell
+# or
+./vendor/bin/sail shell
+```
+
+Once inside the container you can run artisan commands directly:
+
+```bash
+sail@container:/var/www/html$ php artisan flights:stats
+sail@container:/var/www/html$ php artisan flights:inspect {flightId}
+sail@container:/var/www/html$ php artisan flights:purge-idempotency --hours=24
+```
+
+### 5. Useful Makefile Shortcuts
 
 ```bash
 make up         # Start services
@@ -176,10 +230,12 @@ make down       # Stop services
 make fresh      # Rebuild + migrate
 make test       # Run Pest tests via Sail
 make cover      # Tests + coverage
+make perf       # Performance tests + profiling
 make lint       # Check code style
 make fix        # Auto-fix code style
 make shell      # Shell into container
 make logs       # Tail app logs
+make load       # k6 load test
 ```
 
 ---
@@ -223,9 +279,7 @@ The OpenAPI 3.0 spec lives at [`openapi/openapi.json`](openapi/openapi.json).
 | `GET` | `/api/flights/{flightId}` | Get a flight | `Api-Key` | `200` |
 
 <details>
-<summary><strong>curl examples</strong></summary>
-
-**Create a flight:**
+<summary><strong>POST /api/flights</strong> — Create a flight (full example with 2 legs)</summary>
 
 ```bash
 curl -s -X POST http://localhost:8080/api/flights \
@@ -254,13 +308,20 @@ curl -s -X POST http://localhost:8080/api/flights \
       }]
     }]
   }' | jq .
-# => { "flightId": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" }
 ```
 
-**Update a flight (partial — only first leg):**
+Response `201`:
+```json
+{ "flightId": "019cb527-4564-73da-b8c2-65b369738eda" }
+```
+
+</details>
+
+<details>
+<summary><strong>PUT /api/flights/{flightId}</strong> — Update a flight (partial — first leg only)</summary>
 
 ```bash
-curl -s -X PUT http://localhost:8080/api/flights/{flightId} \
+curl -s -X PUT http://localhost:8080/api/flights/019cb527-4564-73da-b8c2-65b369738eda \
   -H "Content-Type: application/json" \
   -H "Api-Key: my-secret-api-key" \
   -H "Idempotency-Key: $(uuidgen)" \
@@ -277,14 +338,45 @@ curl -s -X PUT http://localhost:8080/api/flights/{flightId} \
       }]
     }]
   }'
-# => 204 No Content
 ```
 
-**Get a flight:**
+Response: `204 No Content`
+
+</details>
+
+<details>
+<summary><strong>GET /api/flights/{flightId}</strong> — Get a flight</summary>
 
 ```bash
-curl -s http://localhost:8080/api/flights/{flightId} \
+curl -s http://localhost:8080/api/flights/019cb527-4564-73da-b8c2-65b369738eda \
   -H "Api-Key: my-secret-api-key" | jq .
+```
+
+Response `200`:
+```json
+{
+  "legs": [{
+    "segments": [{
+      "origin": "BCN", "destination": "LON",
+      "departure": "2026-06-09T06:40:00", "arrival": "2026-06-09T10:50:00",
+      "cabinClass": "Y", "airline": "UA", "flightNumber": "101"
+    }, {
+      "origin": "LON", "destination": "JFK",
+      "departure": "2026-06-09T11:55:00", "arrival": "2026-06-09T14:55:00",
+      "cabinClass": "Y", "airline": "UA", "flightNumber": "102"
+    }]
+  }, {
+    "segments": [{
+      "origin": "JFK", "destination": "LON",
+      "departure": "2026-06-25T06:45:00", "arrival": "2026-06-25T10:55:00",
+      "cabinClass": "Y", "airline": "UA", "flightNumber": "101"
+    }, {
+      "origin": "LON", "destination": "BCN",
+      "departure": "2026-06-25T11:55:00", "arrival": "2026-06-25T13:55:00",
+      "cabinClass": "Y", "airline": "UA", "flightNumber": "102"
+    }]
+  }]
+}
 ```
 
 </details>
