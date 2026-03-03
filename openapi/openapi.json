@@ -1,0 +1,359 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Flight Signals API",
+    "description": "Manage flights with nested legs and segments. Supports idempotent async updates via Horizon/Redis queues.",
+    "version": "1.0.0",
+    "license": {
+      "name": "MIT",
+      "url": "https://opensource.org/licenses/MIT"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost/api",
+      "description": "Local (Sail)"
+    }
+  ],
+  "security": [
+    {
+      "ApiKeyAuth": []
+    }
+  ],
+  "paths": {
+    "/flights": {
+      "post": {
+        "operationId": "createFlight",
+        "summary": "Create a flight",
+        "description": "Creates a new Flight entity with nested Legs and Segments.",
+        "tags": ["Flights"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateFlightRequest"
+              },
+              "example": {
+                "legs": [
+                  {
+                    "segments": [
+                      {
+                        "origin": "BCN",
+                        "destination": "LON",
+                        "departure": "2026-06-09T06:45:00",
+                        "arrival": "2026-06-09T10:55:00",
+                        "cabinClass": "Y",
+                        "airline": "UA",
+                        "flightNumber": "101"
+                      },
+                      {
+                        "origin": "LON",
+                        "destination": "JFK",
+                        "departure": "2026-06-09T11:55:00",
+                        "arrival": "2026-06-09T14:55:00",
+                        "cabinClass": "Y",
+                        "airline": "UA",
+                        "flightNumber": "102"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Flight created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlightCreatedResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        }
+      }
+    },
+    "/flights/{flightId}": {
+      "get": {
+        "operationId": "getFlight",
+        "summary": "Get a flight",
+        "description": "Returns all legs and segments for the given flight.",
+        "tags": ["Flights"],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/FlightId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Flight details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetFlightResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        }
+      },
+      "put": {
+        "operationId": "updateFlight",
+        "summary": "Update a flight (async)",
+        "description": "Dispatches an asynchronous update job. Legs are matched by their route signature (origin→destination chain). Requires an `Idempotency-Key` header to prevent duplicate processing.",
+        "tags": ["Flights"],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/FlightId"
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "A unique key to ensure the update is processed exactly once.",
+            "schema": {
+              "type": "string",
+              "example": "550e8400-e29b-41d4-a716-446655440000"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateFlightRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Update accepted (job dispatched)"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "Api-Key"
+      }
+    },
+    "parameters": {
+      "FlightId": {
+        "name": "flightId",
+        "in": "path",
+        "required": true,
+        "description": "UUID of the flight",
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    },
+    "schemas": {
+      "Segment": {
+        "type": "object",
+        "required": ["origin", "destination", "departure", "arrival", "cabinClass", "airline", "flightNumber"],
+        "properties": {
+          "origin": {
+            "type": "string",
+            "maxLength": 10,
+            "example": "BCN"
+          },
+          "destination": {
+            "type": "string",
+            "maxLength": 10,
+            "example": "LON"
+          },
+          "departure": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-06-09T06:45:00"
+          },
+          "arrival": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-06-09T10:55:00"
+          },
+          "cabinClass": {
+            "type": "string",
+            "maxLength": 5,
+            "example": "Y"
+          },
+          "airline": {
+            "type": "string",
+            "maxLength": 10,
+            "example": "UA"
+          },
+          "flightNumber": {
+            "type": "string",
+            "maxLength": 20,
+            "example": "101"
+          }
+        }
+      },
+      "Leg": {
+        "type": "object",
+        "required": ["segments"],
+        "properties": {
+          "segments": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/Segment"
+            }
+          }
+        }
+      },
+      "CreateFlightRequest": {
+        "type": "object",
+        "required": ["legs"],
+        "properties": {
+          "legs": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/Leg"
+            }
+          }
+        }
+      },
+      "UpdateFlightRequest": {
+        "type": "object",
+        "required": ["legs"],
+        "properties": {
+          "legs": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/Leg"
+            }
+          }
+        }
+      },
+      "FlightCreatedResponse": {
+        "type": "object",
+        "properties": {
+          "flightId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
+          }
+        }
+      },
+      "GetFlightResponse": {
+        "type": "object",
+        "properties": {
+          "legs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Leg"
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Invalid or missing Api-Key",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "message": "Invalid or missing Api-Key."
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Resource not found",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "message": "Flight not found."
+            }
+          }
+        }
+      },
+      "ValidationError": {
+        "description": "Validation failed",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "message": {
+                  "type": "string"
+                },
+                "errors": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "TooManyRequests": {
+        "description": "Rate limit exceeded"
+      }
+    }
+  }
+}
