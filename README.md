@@ -11,7 +11,7 @@
   <a href="https://github.com/khaledalam/flight-signals/actions/workflows/ci.yml"><img src="https://github.com/khaledalam/flight-signals/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/php-%3E%3D8.5-8892BF?logo=php&logoColor=white" alt="PHP >= 8.5">
   <img src="https://img.shields.io/badge/Laravel-12-FF2D20?logo=laravel&logoColor=white" alt="Laravel">
-  <img src="https://img.shields.io/badge/tests-58%20passing-brightgreen?logo=pestphp" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-57%20passing-brightgreen?logo=pestphp" alt="Tests">
   <img src="https://img.shields.io/badge/coverage-100%25-brightgreen" alt="Coverage">
   <img src="https://img.shields.io/badge/code%20style-Pint-orange?logo=laravel" alt="Pint">
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="License">
@@ -37,7 +37,7 @@
 - **API key auth** — All endpoints protected with `Api-Key` header
 - **Rate limiting** — 200 requests/minute per API key (configurable via `API_RATE_LIMIT`)
 - **OpenAPI 3.0 spec** — Swagger UI at `/docs`
-- **58 Pest tests** — Unit, feature, commands, performance, architecture (100% coverage)
+- **57 Pest tests** — Unit, feature, commands, performance, architecture (100% coverage)
 - **Load testing** — k6 scripts with smoke, load, and spike scenarios
 
 ---
