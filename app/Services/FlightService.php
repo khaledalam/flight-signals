@@ -87,7 +87,7 @@ class FlightService
     /**
      * Build a string like "BCN>LON|LON>JFK" to uniquely identify a leg's route.
      */
-    private function buildRouteSignature(array $segments): string
+    public function buildRouteSignature(array $segments): string
     {
         return collect($segments)
             ->map(fn (array $s) => $s['origin'].'>'.$s['destination'])

@@ -10,7 +10,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/php-%3E%3D8.5-8892BF?logo=php&logoColor=white" alt="PHP >= 8.5">
   <img src="https://img.shields.io/badge/Laravel-12-FF2D20?logo=laravel&logoColor=white" alt="Laravel">
-  <img src="https://img.shields.io/badge/tests-29%20passing-brightgreen?logo=pestphp" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-43%20passing-brightgreen?logo=pestphp" alt="Tests">
   <img src="https://img.shields.io/badge/code%20style-Pint-orange?logo=laravel" alt="Pint">
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="License">
 </p>
@@ -35,7 +35,7 @@
 - **API key auth** — All endpoints protected with `Api-Key` header
 - **Rate limiting** — 200 requests/minute per API key (configurable via `API_RATE_LIMIT`)
 - **OpenAPI 3.0 spec** — Swagger UI at `/docs`
-- **29 Pest tests** — Auth, validation, idempotency, rate limiting, performance, architecture
+- **43 Pest tests** — Unit, feature, performance, architecture
 - **Load testing** — k6 scripts with smoke, load, and spike scenarios
 
 ---
@@ -105,7 +105,7 @@ You should see containers for **app**, **mysql**, and **redis**.
 Tests use SQLite in-memory, so **no Docker is required** to run them:
 
 ```bash
-# Run all 19 Pest tests
+# Run all Pest tests
 composer test
 
 # Run with coverage report
@@ -308,7 +308,7 @@ All API endpoints are rate-limited to **200 requests per minute** per `Api-Key` 
 
 ## Testing
 
-This project uses [Pest](https://pestphp.com/) with 29 tests across 8 suites.
+This project uses [Pest](https://pestphp.com/) with 43 tests across 11 suites.
 
 ```bash
 # Run all tests (SQLite in-memory — no Docker needed)
@@ -334,13 +334,18 @@ make perf
 
 | Suite | Tests | What it covers |
 |-------|-------|----------------|
+| **Unit** | | |
+| `RouteSignatureTest` | 5 | Route signature building, ordering, edge cases |
+| `FlightServiceTest` | 5 | Create, positions, camelCase mapping, partial update, unmatched leg |
+| `IdempotentRequestTest` | 4 | CRUD, unique constraint, key-per-route, JSON casting |
+| **Feature** | | |
 | `AuthenticationTest` | 3 | Missing/invalid Api-Key on all endpoints |
 | `CreateFlightTest` | 6 | Happy path, validation errors, data persistence |
 | `GetFlightTest` | 2 | Retrieval + 404 handling |
 | `UpdateFlightTest` | 5 | Job dispatch, 204 response, actual data update, validation |
 | `IdempotencyTest` | 2 | Replay returns same response, job dispatched exactly once |
 | `RateLimitingTest` | 1 | 429 after exceeding threshold |
-| `PerformanceTest` | 6 | Endpoint latency budgets, P95 regression detection, large payload handling |
+| `PerformanceTest` | 6 | Endpoint latency budgets, P95 regression, large payloads |
 | `ArchitectureTest` | 4 | Layer boundaries (controllers, models, jobs, services) |
 
 </details>
@@ -603,6 +608,7 @@ app/
 database/migrations/
 openapi/openapi.json
 tests/
+├── Unit/{RouteSignature,FlightService,IdempotentRequest}Test.php
 ├── Feature/{Authentication,CreateFlight,GetFlight,UpdateFlight,Idempotency,RateLimiting}Test.php
 ├── Feature/{Performance,Architecture}Test.php
 └── Load/k6-flights.js
