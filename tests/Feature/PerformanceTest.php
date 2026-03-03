@@ -1,17 +1,22 @@
 <?php
 
-use App\Models\Flight;
 use Illuminate\Support\Facades\Queue;
 
 use function Tests\apiHeaders;
 use function Tests\sampleLegs;
 use function Tests\updatePayload;
 
-// Latency thresholds (milliseconds) — these are in-process test timings,
+// Latency thresholds (milliseconds) — in-process test timings,
 // not real HTTP latency, but they catch regressions in query count and logic.
 const CREATE_THRESHOLD_MS = 200;
 const GET_THRESHOLD_MS = 100;
 const UPDATE_THRESHOLD_MS = 200;
+
+// Warmup: first request in a test pays for DB migration overhead.
+// A throwaway request inside beforeEach absorbs that cost.
+beforeEach(function () {
+    $this->postJson('/api/flights', sampleLegs(), apiHeaders());
+});
 
 it('creates a flight within the latency budget', function () {
     $start = microtime(true);
@@ -57,12 +62,10 @@ it('returns idempotent replay faster than the original request', function () {
     $flightId = $this->postJson('/api/flights', sampleLegs(), apiHeaders())->json('flightId');
     $headers = apiHeaders(['Idempotency-Key' => 'perf-idem-1']);
 
-    // First request (creates record + dispatches job)
     $start1 = microtime(true);
     $this->putJson("/api/flights/{$flightId}", updatePayload(), $headers)->assertStatus(204);
     $first = (microtime(true) - $start1) * 1000;
 
-    // Replay (just a DB lookup, no dispatch)
     $start2 = microtime(true);
     $this->putJson("/api/flights/{$flightId}", updatePayload(), $headers)->assertStatus(204);
     $replay = (microtime(true) - $start2) * 1000;
@@ -81,12 +84,9 @@ it('handles 50 sequential creates without degradation', function () {
         $timings[] = (microtime(true) - $start) * 1000;
     }
 
-    $this->assertDatabaseCount('flights', 50);
+    $this->assertDatabaseCount('flights', 51); // 50 + 1 warmup
 
     $avg = array_sum($timings) / count($timings);
-    $p95 = $timings[array_keys(array_slice($timings, 0, (int) ceil(count($timings) * 0.95), true))[47] ?? 47] ?? end($timings);
-
-    // Sort for percentile calculation
     sort($timings);
     $p95 = $timings[(int) floor(count($timings) * 0.95)];
 
@@ -99,7 +99,6 @@ it('handles 50 sequential creates without degradation', function () {
 });
 
 it('retrieves a flight with many legs efficiently', function () {
-    // Build a flight with 10 legs, 3 segments each
     $legs = [];
     $cities = ['BCN', 'LON', 'JFK', 'LAX', 'CDG', 'FRA', 'NRT', 'SIN', 'DXB', 'SYD', 'HKG'];
     for ($i = 0; $i < 10; $i++) {
