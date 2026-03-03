@@ -19,7 +19,7 @@ test: ## Run Pest test suite
 	$(SAIL) pest
 
 cover: ## Run tests with coverage report
-	$(SAIL) pest --coverage --min=80
+	$(SAIL) pest --coverage --min=90
 
 lint: ## Check code style with Pint (dry-run)
 	$(SAIL) pint --test
@@ -55,7 +55,7 @@ test-local: ## Run tests locally (no Sail, uses SQLite)
 	./vendor/bin/pest
 
 cover-local: ## Run tests with coverage locally
-	./vendor/bin/pest --coverage --min=80
+	./vendor/bin/pest --coverage --min=90
 
 perf-local: ## Run performance tests locally
 	./vendor/bin/pest --filter=Performance --profile

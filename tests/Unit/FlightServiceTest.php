@@ -120,6 +120,25 @@ it('updates only the matched leg and leaves others untouched', function () {
     expect($flight->legs[1]->segments[0]->departure->format('H:i'))->toBe('06:45');
 });
 
+it('can navigate inverse relationships', function () {
+    $flight = $this->service->createFlight([
+        [
+            'segments' => [
+                ['origin' => 'BCN', 'destination' => 'LON', 'departure' => '2026-06-09T06:45:00', 'arrival' => '2026-06-09T10:55:00', 'cabinClass' => 'Y', 'airline' => 'UA', 'flightNumber' => '101'],
+            ],
+        ],
+    ]);
+
+    $leg = $flight->legs->first();
+    $segment = $leg->segments->first();
+
+    // Leg -> Flight (covers Leg::flight())
+    expect($leg->flight->id)->toBe($flight->id);
+
+    // Segment -> Leg (covers Segment::leg())
+    expect($segment->leg->id)->toBe($leg->id);
+});
+
 it('skips legs with no route match without error', function () {
     $flight = $this->service->createFlight([
         [
