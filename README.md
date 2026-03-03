@@ -21,6 +21,7 @@
   <a href="#-quickstart">Quickstart</a> ·
   <a href="#how-to-run--test-locally">Run & Test</a> ·
   <a href="#-api-documentation">API Docs</a> ·
+  <a href="#admin-dashboard">Admin</a> ·
   <a href="#-testing">Testing</a> ·
   <a href="#-performance--load-testing">Performance</a> ·
   <a href="#-artisan-commands">Commands</a> ·
@@ -36,6 +37,7 @@
 - **Async processing** — Updates dispatched via Redis queues, managed by Horizon
 - **API key auth** — All endpoints protected with `Api-Key` header
 - **Rate limiting** — 200 requests/minute per API key (configurable via `API_RATE_LIMIT`)
+- **Admin dashboard** — Stats, flights, env & system info at `/admin` (HTTP Basic auth)
 - **OpenAPI 3.0 spec** — Swagger UI at `/docs`
 - **57 Pest tests** — Unit, feature, commands, performance, architecture (100% coverage)
 - **Load testing** — k6 scripts with smoke, load, and spike scenarios
@@ -80,12 +82,13 @@ The API is now live at **http://localhost:8080** and Swagger UI at **http://loca
 
 > **Note:** The port is controlled by `APP_PORT` in `.env` (default: `8080`). Adjust URLs if you change it.
 
-| Service | URL |
-|---------|-----|
-| API | http://localhost:8080/api/flights |
-| Swagger UI | http://localhost:8080/docs |
-| Horizon | http://localhost:8080/horizon |
-| Health check | http://localhost:8080/up |
+| Service | URL | Auth |
+|---------|-----|------|
+| API | http://localhost:8080/api/flights | `Api-Key` header |
+| Swagger UI | http://localhost:8080/docs | — |
+| Admin Dashboard | http://localhost:8080/admin | Basic HTTP `admin`/`admin` |
+| Horizon | http://localhost:8080/horizon | — |
+| Health check | http://localhost:8080/up | — |
 
 <details>
 <summary><strong>Shut down</strong></summary>
@@ -400,6 +403,25 @@ All API endpoints are rate-limited to **200 requests per minute** per `Api-Key` 
 
 ---
 
+## Admin Dashboard
+
+A built-in admin panel is available at **http://localhost:8080/admin**, protected by HTTP Basic Authentication.
+
+| | |
+|---|---|
+| **URL** | `/admin` |
+| **Username** | `admin` |
+| **Password** | `admin` |
+
+The dashboard displays:
+
+- **Stats** — total flights, legs, segments, idempotency records, pending/failed jobs
+- **Recent flights** — last 10 flights with route summary and timestamps
+- **Environment** — app config, database, queue, cache, and rate limit settings
+- **System info** — PHP/Laravel version, OS, memory limits, timezone, Horizon prefix
+
+---
+
 ## Testing
 
 This project uses [Pest](https://pestphp.com/) with 58 tests (100% code coverage).
@@ -524,10 +546,10 @@ k6 run --env BASE_URL=http://localhost:8080 tests/Load/k6-flights.js
 
 ```
 ┌─────────┐     ┌─────────────┐     ┌──────────────┐     ┌───────┐
-│  Client  │────▶│  Middleware  │────▶│  Controller  │────▶│ MySQL │
-│          │     │  (Api-Key)  │     │              │     └───────┘
+│  Client │────▶│  Middleware │────▶│  Controller  │────▶│ MySQL │
+│         │     │  (Api-Key)  │     │              │     └───────┘
 └─────────┘     │  (Throttle) │     │  ┌────────┐  │
-                └─────────────┘     │  │ Service │  │     ┌───────┐
+                └─────────────┘     │  │ Service│  │     ┌───────┐
                                     │  └────┬───┘  │────▶│ Redis │
                                     │       │      │     └───┬───┘
                                     └───────┼──────┘         │
@@ -536,7 +558,7 @@ k6 run --env BASE_URL=http://localhost:8080 tests/Load/k6-flights.js
                                             │           │  Worker │
                                             │           └────┬────┘
                                             └────────────────┘
-                                          (UpdateFlightJob)
+                                            (UpdateFlightJob)
 ```
 
 <details>
@@ -566,6 +588,7 @@ k6 run --env BASE_URL=http://localhost:8080 tests/Load/k6-flights.js
 | [k6](https://k6.io/) | Load testing | `make load` / `make load-smoke` |
 | [Horizon](https://laravel.com/docs/horizon) | Queue dashboard | http://localhost:8080/horizon |
 | [Swagger UI](https://swagger.io/tools/swagger-ui/) | API docs | http://localhost:8080/docs |
+| Admin Dashboard | Stats, env, flights | http://localhost:8080/admin |
 | Pre-commit hook | Auto-lint on commit | `bash scripts/install-hooks.sh` |
 
 </details>
@@ -695,8 +718,8 @@ app/
 │   ├── FlightsStats.php
 │   └── PurgeIdempotencyKeys.php
 ├── Http/
-│   ├── Controllers/FlightController.php
-│   ├── Middleware/AuthenticateApiKey.php
+│   ├── Controllers/{FlightController,AdminController}.php
+│   ├── Middleware/{AuthenticateApiKey,BasicAuthAdmin}.php
 │   └── Requests/{Create,Update}FlightRequest.php
 ├── Jobs/UpdateFlightJob.php
 ├── Models/{Flight,Leg,Segment,IdempotentRequest}.php
