@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\Flight;
+use App\Models\IdempotentRequest;
 use App\Services\FlightService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -43,5 +44,18 @@ class UpdateFlightJob implements ShouldQueue
         $service->updateFlight($flight, $this->legsData);
 
         Log::info('UpdateFlightJob: completed', ['flight_id' => $this->flightId]);
+    }
+
+    public function failed(\Throwable $exception): void
+    {
+        Log::error('UpdateFlightJob: permanently failed', [
+            'flight_id' => $this->flightId,
+            'idempotency_key' => $this->idempotencyKey,
+            'error' => $exception->getMessage(),
+        ]);
+
+        IdempotentRequest::where('idempotency_key', $this->idempotencyKey)
+            ->where('route', "PUT /api/flights/{$this->flightId}")
+            ->delete();
     }
 }
