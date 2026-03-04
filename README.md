@@ -106,6 +106,26 @@ make down
 
 Interactive Swagger UI at **http://localhost:8080/docs** &middot; OpenAPI spec at [`openapi/openapi.json`](openapi/openapi.json)
 
+**Postman:** Import `openapi/openapi.json` via File &rarr; Import to get the full collection.
+
+<p align="center">
+  <img src="docs/media/postman.png" width="40%" alt="Postman Collection">
+</p>
+
+<details>
+<summary><strong>Postman screenshots</strong></summary>
+<br>
+
+| Create Flight (`201`) | Update Flight (`204`) |
+|:---:|:---:|
+| <img src="docs/media/postman-create-flight.png" width="100%" alt="Create Flight"> | <img src="docs/media/postman-update-flight.png" width="100%" alt="Update Flight"> |
+
+| Flight Not Found (`404`) | Missing Api-Key (`401`) |
+|:---:|:---:|
+| <img src="docs/media/postman-flight-not-found.png" width="100%" alt="Flight Not Found"> | <img src="docs/media/postman-missing-api-key.png" width="100%" alt="Missing Api-Key"> |
+
+</details>
+
 <details>
 <summary><strong>POST /api/flights</strong> -- Create a flight (full example with 2 legs)</summary>
 
