@@ -56,8 +56,6 @@
         ],
         "test": "./vendor/bin/pest",
         "test:coverage": "./vendor/bin/pest --coverage --min=90",
-        "test:perf": "./vendor/bin/pest --filter=Performance --profile",
-        "test:profile": "./vendor/bin/pest --profile",
         "lint": "./vendor/bin/pint --test",
         "fix": "./vendor/bin/pint"
     },

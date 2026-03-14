@@ -392,7 +392,6 @@
             <a href="/docs">Swagger UI <span class="arrow">&rarr;</span></a>
             <a href="/openapi.json">OpenAPI Spec <span class="arrow">&rarr;</span></a>
             <a href="/horizon">Horizon <span class="arrow">&rarr;</span></a>
-            <a href="/admin">Admin (admin/admin) <span class="arrow">&rarr;</span></a>
         </div>
 
         <div class="footer">

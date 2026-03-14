@@ -30,6 +30,8 @@
         <env name="SESSION_DRIVER" value="array"/>
         <env name="API_KEY" value="test-api-key"/>
         <env name="API_RATE_LIMIT" value="60"/>
+        <env name="HORIZON_USERNAME" value="admin"/>
+        <env name="HORIZON_PASSWORD" value="admin"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>

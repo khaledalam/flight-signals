@@ -19,6 +19,11 @@ return [
         'rate_limit' => env('API_RATE_LIMIT', 200),
     ],
 
+    'horizon' => [
+        'username' => env('HORIZON_USERNAME'),
+        'password' => env('HORIZON_PASSWORD'),
+    ],
+
     'postmark' => [
         'key' => env('POSTMARK_API_KEY'),
     ],

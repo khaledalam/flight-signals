@@ -20,17 +20,8 @@
 <p align="center">
   <a href="#quickstart">Quickstart</a> &middot;
   <a href="#api-endpoints">API</a> &middot;
-  <a href="#admin-dashboard">Admin</a> &middot;
   <a href="#testing">Testing</a> &middot;
-  <a href="#performance--load-testing">Performance</a> &middot;
   <a href="#architecture">Architecture</a>
-</p>
-
-<br>
-
-<p align="center">
-  <img src="docs/media/homepage.png" width="49%" alt="Homepage">
-  <img src="docs/media/admin.png" width="49%" alt="Admin Dashboard">
 </p>
 
 ---
@@ -44,10 +35,8 @@
 | **Async queue** | Updates dispatched to Redis, processed by Horizon workers |
 | **API key auth** | All endpoints protected via `Api-Key` header |
 | **Rate limiting** | Configurable per-key throttle (default 200 req/min) |
-| **Admin dashboard** | Stats, flights, env & system info at `/admin` |
 | **OpenAPI 3.0** | Interactive Swagger UI at `/docs` |
-| **57 Pest tests** | Unit, feature, architecture, performance (100% coverage) |
-| **k6 load tests** | Smoke, load, and spike scenarios |
+| **Pest tests** | Unit, feature, architecture (100% coverage) |
 
 ---
 
@@ -79,8 +68,7 @@ The API is now live at **http://localhost:8080**.
 | Homepage | http://localhost:8080 | -- |
 | API | http://localhost:8080/api/flights | `Api-Key` header |
 | Swagger UI | http://localhost:8080/docs | -- |
-| Admin Dashboard | http://localhost:8080/admin | `admin` / `admin` |
-| Horizon | http://localhost:8080/horizon | -- |
+| Horizon | http://localhost:8080/horizon | Basic Auth (`HORIZON_USERNAME` / `HORIZON_PASSWORD`) |
 | Health check | http://localhost:8080/up | -- |
 
 <details>
@@ -244,27 +232,6 @@ This protects against retries, network timeouts, and concurrent submissions.
 
 ---
 
-## Admin Dashboard
-
-<p align="center">
-  <img src="docs/media/admin.png" width="85%" alt="Admin Dashboard">
-</p>
-
-| | |
-|---|---|
-| **URL** | `/admin` |
-| **Username** | `admin` |
-| **Password** | `admin` |
-
-The dashboard displays:
-
-- **Stats** -- flights, legs, segments, idempotency records, pending/failed jobs
-- **Recent flights** -- last 10 with route summary and timestamps
-- **Environment** -- app config, database, queue, cache, rate limit
-- **System info** -- PHP/Laravel version, OS, memory limits, timezone, Horizon prefix
-
----
-
 ## Testing
 
 57 [Pest](https://pestphp.com/) tests with **100% code coverage**. Tests use SQLite in-memory -- no Docker needed.
@@ -272,146 +239,10 @@ The dashboard displays:
 ```bash
 composer test              # Run all tests
 composer test:coverage     # With coverage report
-composer test:perf         # Performance tests only
 make test                  # Via Sail
 make cover                 # Coverage via Sail
 ```
 
-<details>
-<summary><strong>Sample test output</strong></summary>
-
-```
-   PASS  Tests\Unit\RouteSignatureTest
-  ✓ it builds a signature from a single segment
-  ✓ it builds a signature from multiple segments
-  ✓ it preserves segment order in signature
-  ✓ it handles single-character codes
-  ✓ it returns empty string for empty segments
-
-   PASS  Tests\Unit\FlightServiceTest
-  ✓ it creates a flight with legs and segments in a transaction
-  ✓ it assigns correct position indices
-  ✓ it maps camelCase input to snake_case columns
-  ✓ it updates matching leg segments
-  ✓ it skips unmatched legs without error
-  ✓ it handles inverse route as a different leg
-
-   PASS  Tests\Unit\IdempotentRequestTest
-  ✓ it creates and retrieves an idempotent request
-  ✓ it enforces unique key + route constraint
-  ✓ it allows same key on different routes
-  ✓ it casts response_body as array
-
-   PASS  Tests\Unit\UpdateFlightJobTest
-  ✓ it returns early when flight is not found
-  ✓ it delegates to flight service
-
-   PASS  Tests\Unit\HorizonGateTest
-  ✓ it allows access in local environment
-  ✓ it denies access in non-local environment
-
-   PASS  Tests\Feature\AuthenticationTest
-  ✓ it rejects requests without api key
-  ✓ it rejects requests with invalid api key
-  ✓ it rejects all endpoints without auth
-
-   PASS  Tests\Feature\CreateFlightTest
-  ✓ it creates a flight and returns uuid
-  ✓ it persists legs and segments
-  ✓ it validates required fields
-  ✓ it validates arrival is after departure
-  ✓ it requires at least one leg
-  ✓ it requires at least one segment per leg
-
-   PASS  Tests\Feature\GetFlightTest
-  ✓ it returns a flight with legs and segments
-  ✓ it returns 404 for non-existent flight
-
-   PASS  Tests\Feature\UpdateFlightTest
-  ✓ it dispatches update job and returns 204
-  ✓ it requires idempotency key header
-  ✓ it returns 404 for non-existent flight
-  ✓ it validates update payload
-  ✓ it actually updates segment data when job runs
-
-   PASS  Tests\Feature\IdempotencyTest
-  ✓ it returns same response on replay
-  ✓ it dispatches job only once
-  ✓ it handles concurrent duplicate via unique constraint
-  ✓ it allows same key on different flights
-
-   PASS  Tests\Feature\CommandsTest
-  ✓ flights:stats displays table with counts
-  ✓ flights:stats shows zero state
-  ✓ flights:inspect shows flight details
-  ✓ flights:inspect returns error for missing flight
-  ✓ flights:purge-idempotency deletes old records
-  ✓ flights:purge-idempotency respects hours option
-  ✓ flights:purge-idempotency skips when nothing to purge
-  ✓ flights:purge-idempotency force skips confirmation
-
-   PASS  Tests\Feature\RateLimitingTest
-  ✓ it returns 429 when rate limit exceeded
-
-   PASS  Tests\Feature\PerformanceTest
-  ✓ create flight responds within 200ms
-  ✓ get flight responds within 100ms
-  ✓ update flight dispatch responds within 200ms
-  ✓ sustained create throughput stays under budget
-  ✓ get flight with large payload responds within 100ms
-  ✓ idempotency replay is faster than first request
-
-   PASS  Tests\Feature\ArchitectureTest
-  ✓ controllers do not extend base controller
-  ✓ models extend eloquent model
-  ✓ jobs implement should queue
-  ✓ services are not invokable
-
-  Tests:    57 passed (149 assertions)
-  Duration: 1.84s
-```
-
-</details>
-
-<details>
-<summary><strong>Sample coverage output</strong></summary>
-
-```
-   PASS  Tests\Unit\RouteSignatureTest              5 / 5 (100%)
-   PASS  Tests\Unit\FlightServiceTest               6 / 6 (100%)
-   PASS  Tests\Unit\IdempotentRequestTest           4 / 4 (100%)
-   PASS  Tests\Unit\UpdateFlightJobTest             2 / 2 (100%)
-   PASS  Tests\Unit\HorizonGateTest                 2 / 2 (100%)
-   PASS  Tests\Feature\AuthenticationTest           3 / 3 (100%)
-   PASS  Tests\Feature\CreateFlightTest             6 / 6 (100%)
-   PASS  Tests\Feature\GetFlightTest                2 / 2 (100%)
-   PASS  Tests\Feature\UpdateFlightTest             5 / 5 (100%)
-   PASS  Tests\Feature\IdempotencyTest              4 / 4 (100%)
-   PASS  Tests\Feature\CommandsTest                 8 / 8 (100%)
-   PASS  Tests\Feature\RateLimitingTest             1 / 1 (100%)
-   PASS  Tests\Feature\PerformanceTest              6 / 6 (100%)
-   PASS  Tests\Feature\ArchitectureTest             4 / 4 (100%)
-
-  Tests:    57 passed (149 assertions)
-  Duration: 2.13s
-
-  Console/Commands/FlightInspect ............... 100.0%
-  Console/Commands/FlightsStats ................ 100.0%
-  Console/Commands/PurgeIdempotencyKeys ........ 100.0%
-  Http/Controllers/FlightController ............ 100.0%
-  Http/Middleware/AuthenticateApiKey ............ 100.0%
-  Http/Requests/CreateFlightRequest ............ 100.0%
-  Http/Requests/UpdateFlightRequest ............ 100.0%
-  Jobs/UpdateFlightJob ......................... 100.0%
-  Models/Flight ................................ 100.0%
-  Models/IdempotentRequest ..................... 100.0%
-  Models/Leg ................................... 100.0%
-  Models/Segment ............................... 100.0%
-  Providers/HorizonServiceProvider ............. 100.0%
-  Services/FlightService ....................... 100.0%
-
-  Total Coverage ............................... 100.0%
-```
 
 </details>
 
@@ -423,67 +254,16 @@ make cover                 # Coverage via Sail
 | `RouteSignatureTest` | 5 | Route signature building, ordering, edge cases |
 | `FlightServiceTest` | 6 | Create, positions, camelCase mapping, partial update, unmatched leg |
 | `IdempotentRequestTest` | 4 | CRUD, unique constraint, key-per-route, JSON casting |
-| `UpdateFlightJobTest` | 2 | Flight-not-found early return, successful processing |
+| `UpdateFlightJobTest` | 3 | Flight-not-found early return, successful processing, failure cleanup |
 | `HorizonGateTest` | 2 | Local access allowed, non-local denied |
-| `AuthenticationTest` | 3 | Missing/invalid Api-Key on all endpoints |
-| `CreateFlightTest` | 6 | Happy path, validation errors, data persistence |
+| `AuthenticationTest` | 4 | Missing/invalid/null Api-Key on all endpoints |
+| `CreateFlightTest` | 9 | Happy path, validation errors, data persistence, sequence/limits |
 | `GetFlightTest` | 2 | Retrieval + 404 handling |
 | `UpdateFlightTest` | 5 | Job dispatch, 204 response, actual data update, validation |
 | `IdempotencyTest` | 4 | Replay, exactly-once dispatch, concurrent race |
 | `CommandsTest` | 8 | flights:stats, flights:inspect, flights:purge-idempotency |
 | `RateLimitingTest` | 1 | 429 after exceeding threshold |
-| `PerformanceTest` | 6 | Endpoint latency budgets, P95 regression, large payloads |
 | `ArchitectureTest` | 4 | Layer boundaries (controllers, models, jobs, services) |
-
-</details>
-
----
-
-## Performance & Load Testing
-
-### Latency budgets (Pest)
-
-| Endpoint | Budget | Checks |
-|----------|--------|--------|
-| `POST /api/flights` | < 200ms | Single create + 50-request sustained throughput (avg + P95) |
-| `GET /api/flights/{id}` | < 100ms | Normal + 10-leg/30-segment large payload |
-| `PUT /api/flights/{id}` | < 200ms | Dispatch latency + idempotency replay faster than first request |
-
-### k6 load testing
-
-Three scenarios in `tests/Load/k6-flights.js`:
-
-| Scenario | VUs | Duration | Purpose |
-|----------|-----|----------|---------|
-| **Smoke** | 1 | 10s | Sanity check, baseline latency |
-| **Load** | 0 &rarr; 10 &rarr; 0 | 50s | Moderate sustained concurrency |
-| **Spike** | 0 &rarr; 30 &rarr; 0 | 20s | Sudden burst handling |
-
-```bash
-brew install k6             # Install k6
-make load                   # All scenarios (auto-adjusts rate limit)
-make load-smoke             # Quick smoke test (1 VU, 10s)
-```
-
-> `make load` sets `API_RATE_LIMIT=10000` before running and restores `200` when done.
-
-<details>
-<summary><strong>Sample k6 output</strong></summary>
-
-```
-╔══════════════════════════════════════════════╗
-║        Flight Signals -- Load Test Report    ║
-╚══════════════════════════════════════════════╝
-
-  Create P95           142.3ms
-  Create P99           287.1ms
-  Get P95              28.4ms
-  Get P99              61.2ms
-  Update P95           95.7ms
-  Update P99           183.4ms
-  Error Rate           0.00%
-  Flights Created      847
-```
 
 </details>
 
@@ -632,6 +412,8 @@ sail artisan queue:retry all      # Retry all failed jobs
 | `QUEUE_CONNECTION` | Queue driver | `redis` |
 | `REDIS_HOST` | Redis host | `redis` |
 | `API_RATE_LIMIT` | Max requests/min per key | `200` |
+| `HORIZON_USERNAME` | Horizon dashboard username | *(required for non-local)* |
+| `HORIZON_PASSWORD` | Horizon dashboard password | *(required for non-local)* |
 
 All variables are in `.env.example`. Never commit `.env`.
 
@@ -645,11 +427,9 @@ All variables are in `.env.example`. Never commit `.env`.
 | Tool | Purpose | Command |
 |------|---------|---------|
 | [Pint](https://laravel.com/docs/pint) | Code style | `composer fix` / `composer lint` |
-| [Pest](https://pestphp.com/) | Testing + perf | `composer test` / `composer test:perf` |
-| [k6](https://k6.io/) | Load testing | `make load` / `make load-smoke` |
+| [Pest](https://pestphp.com/) | Testing | `composer test` |
 | [Horizon](https://laravel.com/docs/horizon) | Queue dashboard | http://localhost:8080/horizon |
 | [Swagger UI](https://swagger.io/tools/swagger-ui/) | API docs | http://localhost:8080/docs |
-| Admin Dashboard | Stats, env, flights | http://localhost:8080/admin |
 | Pre-commit hook | Auto-lint on commit | `bash scripts/install-hooks.sh` |
 
 </details>
@@ -664,10 +444,6 @@ make down       # Stop services
 make fresh      # Rebuild + migrate
 make test       # Run Pest via Sail
 make cover      # Tests + coverage
-make perf       # Performance tests + profiling
-make profile    # All tests with slowest highlighted
-make load       # k6 load test (all scenarios)
-make load-smoke # k6 smoke test (1 VU, 10s)
 make lint       # Check code style
 make fix        # Auto-fix code style
 make shell      # Shell into container
@@ -687,21 +463,20 @@ app/
 │   ├── FlightsStats.php
 │   └── PurgeIdempotencyKeys.php
 ├── Http/
-│   ├── Controllers/{FlightController,AdminController}.php
-│   ├── Middleware/{AuthenticateApiKey,BasicAuthAdmin}.php
+│   ├── Controllers/FlightController.php
+│   ├── Middleware/AuthenticateApiKey.php
 │   └── Requests/{Create,Update}FlightRequest.php
 ├── Jobs/UpdateFlightJob.php
 ├── Models/{Flight,Leg,Segment,IdempotentRequest}.php
 ├── Providers/{App,Horizon}ServiceProvider.php
 └── Services/FlightService.php
 database/migrations/
-docs/media/                 # Screenshots (homepage.png, admin.png)
+docs/media/                 # Screenshots
 openapi/openapi.json
 tests/
-├── Unit/{RouteSignature,FlightService,IdempotentRequest}Test.php
+├── Unit/{RouteSignature,FlightService,IdempotentRequest,UpdateFlightJob,HorizonGate}Test.php
 ├── Feature/{Authentication,CreateFlight,GetFlight,UpdateFlight,Idempotency,RateLimiting}Test.php
-├── Feature/{Performance,Architecture}Test.php
-└── Load/k6-flights.js
+└── Feature/{Performance,Architecture}Test.php
 ```
 
 ---

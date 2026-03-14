@@ -238,6 +238,7 @@
           "segments": {
             "type": "array",
             "minItems": 1,
+            "maxItems": 20,
             "items": {
               "$ref": "#/components/schemas/Segment"
             }
@@ -251,6 +252,7 @@
           "legs": {
             "type": "array",
             "minItems": 1,
+            "maxItems": 10,
             "items": {
               "$ref": "#/components/schemas/Leg"
             }
@@ -264,6 +266,7 @@
           "legs": {
             "type": "array",
             "minItems": 1,
+            "maxItems": 10,
             "items": {
               "$ref": "#/components/schemas/Leg"
             }

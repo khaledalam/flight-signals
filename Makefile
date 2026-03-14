@@ -1,4 +1,4 @@
-.PHONY: help up down fresh test cover lint fix horizon logs shell perf load
+.PHONY: help up down fresh test cover lint fix horizon logs shell migrate test-local cover-local
 
 SAIL = ./vendor/bin/sail
 
@@ -27,31 +27,6 @@ lint: ## Check code style with Pint (dry-run)
 fix: ## Fix code style with Pint
 	$(SAIL) pint
 
-perf: ## Run performance/latency tests only
-	$(SAIL) pest --filter=Performance --profile
-
-profile: ## Run all tests with profiling (show slowest)
-	$(SAIL) pest --profile
-
-load: ## Run k6 load test (auto-raises rate limit)
-	@echo ""
-	@echo "\033[33m⚠  Raising API_RATE_LIMIT to 10000 for load testing...\033[0m"
-	@sed -i.bak 's/^API_RATE_LIMIT=.*/API_RATE_LIMIT=10000/' .env
-	@$(SAIL) artisan config:clear > /dev/null 2>&1
-	@echo "\033[32m✓  Rate limit set to 10000 req/min. Running k6...\033[0m"
-	@echo ""
-	@k6 run tests/Load/k6-flights.js; EXIT_CODE=$$?; \
-		echo ""; \
-		echo "\033[33m⚠  Restoring API_RATE_LIMIT to 200...\033[0m"; \
-		sed -i.bak 's/^API_RATE_LIMIT=.*/API_RATE_LIMIT=200/' .env; \
-		rm -f .env.bak; \
-		$(SAIL) artisan config:clear > /dev/null 2>&1; \
-		echo "\033[32m✓  Rate limit restored to 200 req/min.\033[0m"; \
-		exit $$EXIT_CODE
-
-load-smoke: ## Run k6 smoke test (1 VU, 10s)
-	k6 run --vus 1 --duration 10s tests/Load/k6-flights.js
-
 horizon: ## Open Horizon dashboard URL
 	@echo "http://localhost/horizon"
 
@@ -69,6 +44,3 @@ test-local: ## Run tests locally (no Sail, uses SQLite)
 
 cover-local: ## Run tests with coverage locally
 	./vendor/bin/pest --coverage --min=90
-
-perf-local: ## Run performance tests locally
-	./vendor/bin/pest --filter=Performance --profile

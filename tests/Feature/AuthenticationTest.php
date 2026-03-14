@@ -20,3 +20,12 @@ it('blocks all endpoints without auth', function () {
     $this->putJson('/api/flights/some-id', [])->assertStatus(401);
     $this->postJson('/api/flights', [])->assertStatus(401);
 });
+
+it('rejects requests when API_KEY env is not configured', function () {
+    config(['services.api.key' => null]);
+
+    $this->postJson('/api/flights', sampleLegs(), [
+        'Api-Key' => 'any-key',
+        'Accept' => 'application/json',
+    ])->assertStatus(401);
+});

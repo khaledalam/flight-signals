@@ -14,6 +14,7 @@ class HorizonServiceProvider extends HorizonApplicationServiceProvider
 
     protected function authorization(): void
     {
+        // Auth is handled by HorizonBasicAuth middleware.
         Horizon::auth(fn () => true);
     }
 }
