@@ -14,6 +14,19 @@ class HorizonServiceProvider extends HorizonApplicationServiceProvider
 
     protected function authorization(): void
     {
-        Horizon::auth(fn () => true);
+        Horizon::auth(function ($request) {
+            if (app()->environment('local')) {
+                return true;
+            }
+
+            $user = $request->getUser();
+            $pass = (string) $request->getPassword();
+            $expectedUser = config('services.horizon.username');
+            $expectedPass = config('services.horizon.password');
+
+            return $expectedUser && $expectedPass
+                && $user === $expectedUser
+                && hash_equals($expectedPass, $pass);
+        });
     }
 }
