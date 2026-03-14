@@ -24,12 +24,6 @@
   <a href="#architecture">Architecture</a>
 </p>
 
-<br>
-
-<p align="center">
-  <img src="docs/media/homepage.png" width="80%" alt="Homepage">
-</p>
-
 ---
 
 ## Features
@@ -74,7 +68,7 @@ The API is now live at **http://localhost:8080**.
 | Homepage | http://localhost:8080 | -- |
 | API | http://localhost:8080/api/flights | `Api-Key` header |
 | Swagger UI | http://localhost:8080/docs | -- |
-| Horizon | http://localhost:8080/horizon | Local: open; non-local: Basic Auth |
+| Horizon | http://localhost:8080/horizon | Basic Auth (`HORIZON_USERNAME` / `HORIZON_PASSWORD`) |
 | Health check | http://localhost:8080/up | -- |
 
 <details>
@@ -223,16 +217,6 @@ Response `200`:
 
 </details>
 
-### Validation Rules
-
-| Rule | Description |
-|------|-------------|
-| Max 10 legs per flight | Prevents oversized payloads |
-| Max 20 segments per leg | Prevents oversized payloads |
-| Arrival must be after departure | Per-segment chronological check |
-| Segment sequence ordering | Each segment's departure must be at or after the previous segment's arrival |
-| All segment fields required | `origin`, `destination`, `departure`, `arrival`, `cabinClass`, `airline`, `flightNumber` |
-
 ---
 
 ## Idempotency & Rate Limiting
@@ -259,132 +243,6 @@ make test                  # Via Sail
 make cover                 # Coverage via Sail
 ```
 
-<details>
-<summary><strong>Sample test output</strong></summary>
-
-```
-   PASS  Tests\Unit\RouteSignatureTest
-  ✓ it builds a signature from a single segment
-  ✓ it builds a signature from multiple segments
-  ✓ it preserves segment order in signature
-  ✓ it handles single-character codes
-  ✓ it returns empty string for empty segments
-
-   PASS  Tests\Unit\FlightServiceTest
-  ✓ it creates a flight with legs and segments in a transaction
-  ✓ it assigns correct position indices
-  ✓ it maps camelCase input to snake_case columns
-  ✓ it updates matching leg segments
-  ✓ it skips unmatched legs without error
-  ✓ it handles inverse route as a different leg
-
-   PASS  Tests\Unit\IdempotentRequestTest
-  ✓ it creates and retrieves an idempotent request
-  ✓ it enforces unique key + route constraint
-  ✓ it allows same key on different routes
-  ✓ it casts response_body as array
-
-   PASS  Tests\Unit\UpdateFlightJobTest
-  ✓ it returns early when flight is not found
-  ✓ it delegates to flight service
-
-   PASS  Tests\Unit\HorizonGateTest
-  ✓ it allows access in local environment
-  ✓ it denies access in non-local environment
-
-   PASS  Tests\Feature\AuthenticationTest
-  ✓ it rejects requests without api key
-  ✓ it rejects requests with invalid api key
-  ✓ it rejects all endpoints without auth
-
-   PASS  Tests\Feature\CreateFlightTest
-  ✓ it creates a flight and returns uuid
-  ✓ it persists legs and segments
-  ✓ it validates required fields
-  ✓ it validates arrival is after departure
-  ✓ it requires at least one leg
-  ✓ it requires at least one segment per leg
-
-   PASS  Tests\Feature\GetFlightTest
-  ✓ it returns a flight with legs and segments
-  ✓ it returns 404 for non-existent flight
-
-   PASS  Tests\Feature\UpdateFlightTest
-  ✓ it dispatches update job and returns 204
-  ✓ it requires idempotency key header
-  ✓ it returns 404 for non-existent flight
-  ✓ it validates update payload
-  ✓ it actually updates segment data when job runs
-
-   PASS  Tests\Feature\IdempotencyTest
-  ✓ it returns same response on replay
-  ✓ it dispatches job only once
-  ✓ it handles concurrent duplicate via unique constraint
-  ✓ it allows same key on different flights
-
-   PASS  Tests\Feature\CommandsTest
-  ✓ flights:stats displays table with counts
-  ✓ flights:stats shows zero state
-  ✓ flights:inspect shows flight details
-  ✓ flights:inspect returns error for missing flight
-  ✓ flights:purge-idempotency deletes old records
-  ✓ flights:purge-idempotency respects hours option
-  ✓ flights:purge-idempotency skips when nothing to purge
-  ✓ flights:purge-idempotency force skips confirmation
-
-   PASS  Tests\Feature\RateLimitingTest
-  ✓ it returns 429 when rate limit exceeded
-
-   PASS  Tests\Feature\ArchitectureTest
-  ✓ controllers do not extend base controller
-  ✓ models extend eloquent model
-  ✓ jobs implement should queue
-  ✓ services are not invokable
-
-  Tests:    57 passed (149 assertions)
-  Duration: 1.84s
-```
-
-</details>
-
-<details>
-<summary><strong>Sample coverage output</strong></summary>
-
-```
-   PASS  Tests\Unit\RouteSignatureTest              5 / 5 (100%)
-   PASS  Tests\Unit\FlightServiceTest               6 / 6 (100%)
-   PASS  Tests\Unit\IdempotentRequestTest           4 / 4 (100%)
-   PASS  Tests\Unit\UpdateFlightJobTest             2 / 2 (100%)
-   PASS  Tests\Unit\HorizonGateTest                 2 / 2 (100%)
-   PASS  Tests\Feature\AuthenticationTest           3 / 3 (100%)
-   PASS  Tests\Feature\CreateFlightTest             6 / 6 (100%)
-   PASS  Tests\Feature\GetFlightTest                2 / 2 (100%)
-   PASS  Tests\Feature\UpdateFlightTest             5 / 5 (100%)
-   PASS  Tests\Feature\IdempotencyTest              4 / 4 (100%)
-   PASS  Tests\Feature\CommandsTest                 8 / 8 (100%)
-   PASS  Tests\Feature\RateLimitingTest             1 / 1 (100%)
-   PASS  Tests\Feature\ArchitectureTest             4 / 4 (100%)
-
-  Tests:    57 passed (149 assertions)
-  Duration: 2.13s
-
-  Console/Commands/FlightInspect ............... 100.0%
-  Console/Commands/FlightsStats ................ 100.0%
-  Console/Commands/PurgeIdempotencyKeys ........ 100.0%
-  Http/Controllers/FlightController ............ 100.0%
-  Http/Middleware/AuthenticateApiKey ............ 100.0%
-  Http/Requests/CreateFlightRequest ............ 100.0%
-  Http/Requests/UpdateFlightRequest ............ 100.0%
-  Jobs/UpdateFlightJob ......................... 100.0%
-  Models/Flight ................................ 100.0%
-  Models/IdempotentRequest ..................... 100.0%
-  Models/Leg ................................... 100.0%
-  Models/Segment ............................... 100.0%
-  Providers/HorizonServiceProvider ............. 100.0%
-  Services/FlightService ....................... 100.0%
-
-  Total Coverage ............................... 100.0%
-```
 
 </details>
 
