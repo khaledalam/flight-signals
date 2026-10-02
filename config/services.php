@@ -19,6 +19,11 @@ return [
         'rate_limit' => env('API_RATE_LIMIT', 200),
     ],
 
+    'admin' => [
+        'username' => env('ADMIN_USERNAME'),
+        'password' => env('ADMIN_PASSWORD'),
+    ],
+
     'postmark' => [
         'key' => env('POSTMARK_API_KEY'),
     ],

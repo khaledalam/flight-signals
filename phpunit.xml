@@ -30,6 +30,8 @@
         <env name="SESSION_DRIVER" value="array"/>
         <env name="API_KEY" value="test-api-key"/>
         <env name="API_RATE_LIMIT" value="60"/>
+        <env name="ADMIN_USERNAME" value="test-admin"/>
+        <env name="ADMIN_PASSWORD" value="test-admin-password"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
