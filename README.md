@@ -79,8 +79,8 @@ The API is now live at **http://localhost:8080**.
 | Homepage | http://localhost:8080 | -- |
 | API | http://localhost:8080/api/flights | `Api-Key` header |
 | Swagger UI | http://localhost:8080/docs | -- |
-| Admin Dashboard | http://localhost:8080/admin | `admin` / `admin` |
-| Horizon | http://localhost:8080/horizon | -- |
+| Admin Dashboard | http://localhost:8080/admin | `ADMIN_USERNAME` / `ADMIN_PASSWORD` (basic auth) |
+| Horizon | http://localhost:8080/horizon | `ADMIN_USERNAME` / `ADMIN_PASSWORD` (basic auth) |
 | Health check | http://localhost:8080/up | -- |
 
 <details>
@@ -235,10 +235,24 @@ Response `200`:
 
 **Idempotency** -- The `PUT /api/flights/{flightId}` endpoint requires an `Idempotency-Key` header. The system guarantees exactly-once processing:
 
-1. First request -- key stored in `idempotent_requests` table, update job dispatched to Redis.
-2. Replay with same key -- stored `204` returned immediately, no duplicate job.
+1. The request takes an atomic Redis lock (`Cache::lock()`) on the key, scoped to the flight.
+2. First request -- update job dispatched, `204` response stored in Redis with a TTL (`IDEMPOTENCY_TTL`, default 24h). No database table, so nothing to purge.
+3. Replay with same key -- stored `204` returned immediately, no duplicate job.
+4. Same key while the first request still holds the lock -- `409 Conflict`.
+5. Same key with a different payload -- `422`.
+6. If the job permanently fails, the key is released so the client can retry with it.
 
-This protects against retries, network timeouts, and concurrent submissions.
+## Validation
+
+Segment times are **local to each airport** (`YYYY-MM-DDTHH:MM:SS`, no offset). Origin/destination must be a known IATA airport or metro code (`resources/data/airport-timezones.php`), which is used to convert both times to UTC before comparing:
+
+- a segment must arrive after it departs (e.g. `SYD 10:00 -> LAX 06:00` same date is valid; `JFK 06:45 -> LHR 10:55` is not),
+- each segment must depart after the previous segment of its leg arrives,
+- each leg must depart after the previous leg arrives,
+- origin and destination must differ,
+- at most 10 legs per flight and 8 segments per leg. Oversized payloads are rejected before per-segment validation runs.
+
+On update, every leg in the payload must match an existing leg by route (otherwise `422`), and the merged itinerary must still be in order.
 
 **Rate Limiting** -- All API endpoints are throttled to **200 req/min** per `Api-Key` (configurable via `API_RATE_LIMIT`). Exceeding the limit returns `429 Too Many Requests`.
 
@@ -253,12 +267,14 @@ This protects against retries, network timeouts, and concurrent submissions.
 | | |
 |---|---|
 | **URL** | `/admin` |
-| **Username** | `admin` |
-| **Password** | `admin` |
+| **Username** | `ADMIN_USERNAME` env var |
+| **Password** | `ADMIN_PASSWORD` env var |
+
+Both `/admin` and `/horizon` are locked until these are set.
 
 The dashboard displays:
 
-- **Stats** -- flights, legs, segments, idempotency records, pending/failed jobs
+- **Stats** -- flights, legs, segments, pending/failed jobs
 - **Recent flights** -- last 10 with route summary and timestamps
 - **Environment** -- app config, database, queue, cache, rate limit
 - **System info** -- PHP/Laravel version, OS, memory limits, timezone, Horizon prefix
@@ -267,7 +283,7 @@ The dashboard displays:
 
 ## Testing
 
-57 [Pest](https://pestphp.com/) tests with **100% code coverage**. Tests use SQLite in-memory -- no Docker needed.
+88 [Pest](https://pestphp.com/) tests with **100% code coverage**, stable under `--parallel`. Tests use SQLite in-memory -- no Docker needed.
 
 ```bash
 composer test              # Run all tests
@@ -278,161 +294,25 @@ make cover                 # Coverage via Sail
 ```
 
 <details>
-<summary><strong>Sample test output</strong></summary>
-
-```
-   PASS  Tests\Unit\RouteSignatureTest
-  ✓ it builds a signature from a single segment
-  ✓ it builds a signature from multiple segments
-  ✓ it preserves segment order in signature
-  ✓ it handles single-character codes
-  ✓ it returns empty string for empty segments
-
-   PASS  Tests\Unit\FlightServiceTest
-  ✓ it creates a flight with legs and segments in a transaction
-  ✓ it assigns correct position indices
-  ✓ it maps camelCase input to snake_case columns
-  ✓ it updates matching leg segments
-  ✓ it skips unmatched legs without error
-  ✓ it handles inverse route as a different leg
-
-   PASS  Tests\Unit\IdempotentRequestTest
-  ✓ it creates and retrieves an idempotent request
-  ✓ it enforces unique key + route constraint
-  ✓ it allows same key on different routes
-  ✓ it casts response_body as array
-
-   PASS  Tests\Unit\UpdateFlightJobTest
-  ✓ it returns early when flight is not found
-  ✓ it delegates to flight service
-
-   PASS  Tests\Unit\HorizonGateTest
-  ✓ it allows access in local environment
-  ✓ it denies access in non-local environment
-
-   PASS  Tests\Feature\AuthenticationTest
-  ✓ it rejects requests without api key
-  ✓ it rejects requests with invalid api key
-  ✓ it rejects all endpoints without auth
-
-   PASS  Tests\Feature\CreateFlightTest
-  ✓ it creates a flight and returns uuid
-  ✓ it persists legs and segments
-  ✓ it validates required fields
-  ✓ it validates arrival is after departure
-  ✓ it requires at least one leg
-  ✓ it requires at least one segment per leg
-
-   PASS  Tests\Feature\GetFlightTest
-  ✓ it returns a flight with legs and segments
-  ✓ it returns 404 for non-existent flight
-
-   PASS  Tests\Feature\UpdateFlightTest
-  ✓ it dispatches update job and returns 204
-  ✓ it requires idempotency key header
-  ✓ it returns 404 for non-existent flight
-  ✓ it validates update payload
-  ✓ it actually updates segment data when job runs
-
-   PASS  Tests\Feature\IdempotencyTest
-  ✓ it returns same response on replay
-  ✓ it dispatches job only once
-  ✓ it handles concurrent duplicate via unique constraint
-  ✓ it allows same key on different flights
-
-   PASS  Tests\Feature\CommandsTest
-  ✓ flights:stats displays table with counts
-  ✓ flights:stats shows zero state
-  ✓ flights:inspect shows flight details
-  ✓ flights:inspect returns error for missing flight
-  ✓ flights:purge-idempotency deletes old records
-  ✓ flights:purge-idempotency respects hours option
-  ✓ flights:purge-idempotency skips when nothing to purge
-  ✓ flights:purge-idempotency force skips confirmation
-
-   PASS  Tests\Feature\RateLimitingTest
-  ✓ it returns 429 when rate limit exceeded
-
-   PASS  Tests\Feature\PerformanceTest
-  ✓ create flight responds within 200ms
-  ✓ get flight responds within 100ms
-  ✓ update flight dispatch responds within 200ms
-  ✓ sustained create throughput stays under budget
-  ✓ get flight with large payload responds within 100ms
-  ✓ idempotency replay is faster than first request
-
-   PASS  Tests\Feature\ArchitectureTest
-  ✓ controllers do not extend base controller
-  ✓ models extend eloquent model
-  ✓ jobs implement should queue
-  ✓ services are not invokable
-
-  Tests:    57 passed (149 assertions)
-  Duration: 1.84s
-```
-
-</details>
-
-<details>
-<summary><strong>Sample coverage output</strong></summary>
-
-```
-   PASS  Tests\Unit\RouteSignatureTest              5 / 5 (100%)
-   PASS  Tests\Unit\FlightServiceTest               6 / 6 (100%)
-   PASS  Tests\Unit\IdempotentRequestTest           4 / 4 (100%)
-   PASS  Tests\Unit\UpdateFlightJobTest             2 / 2 (100%)
-   PASS  Tests\Unit\HorizonGateTest                 2 / 2 (100%)
-   PASS  Tests\Feature\AuthenticationTest           3 / 3 (100%)
-   PASS  Tests\Feature\CreateFlightTest             6 / 6 (100%)
-   PASS  Tests\Feature\GetFlightTest                2 / 2 (100%)
-   PASS  Tests\Feature\UpdateFlightTest             5 / 5 (100%)
-   PASS  Tests\Feature\IdempotencyTest              4 / 4 (100%)
-   PASS  Tests\Feature\CommandsTest                 8 / 8 (100%)
-   PASS  Tests\Feature\RateLimitingTest             1 / 1 (100%)
-   PASS  Tests\Feature\PerformanceTest              6 / 6 (100%)
-   PASS  Tests\Feature\ArchitectureTest             4 / 4 (100%)
-
-  Tests:    57 passed (149 assertions)
-  Duration: 2.13s
-
-  Console/Commands/FlightInspect ............... 100.0%
-  Console/Commands/FlightsStats ................ 100.0%
-  Console/Commands/PurgeIdempotencyKeys ........ 100.0%
-  Http/Controllers/FlightController ............ 100.0%
-  Http/Middleware/AuthenticateApiKey ............ 100.0%
-  Http/Requests/CreateFlightRequest ............ 100.0%
-  Http/Requests/UpdateFlightRequest ............ 100.0%
-  Jobs/UpdateFlightJob ......................... 100.0%
-  Models/Flight ................................ 100.0%
-  Models/IdempotentRequest ..................... 100.0%
-  Models/Leg ................................... 100.0%
-  Models/Segment ............................... 100.0%
-  Providers/HorizonServiceProvider ............. 100.0%
-  Services/FlightService ....................... 100.0%
-
-  Total Coverage ............................... 100.0%
-```
-
-</details>
-
-<details>
 <summary><strong>Test suites breakdown</strong></summary>
 
 | Suite | Tests | Covers |
 |-------|-------|--------|
 | `RouteSignatureTest` | 5 | Route signature building, ordering, edge cases |
-| `FlightServiceTest` | 6 | Create, positions, camelCase mapping, partial update, unmatched leg |
-| `IdempotentRequestTest` | 4 | CRUD, unique constraint, key-per-route, JSON casting |
-| `UpdateFlightJobTest` | 2 | Flight-not-found early return, successful processing |
-| `HorizonGateTest` | 2 | Local access allowed, non-local denied |
-| `AuthenticationTest` | 3 | Missing/invalid Api-Key on all endpoints |
+| `FlightServiceTest` | 7 | Create, positions, camelCase mapping, partial update, one-to-one leg matching |
+| `UpdateFlightJobTest` | 3 | Flight-not-found early return, processing, key released on failure |
+| `AdminServiceTest` | 4 | Dashboard stats, recent flights, job counts, env |
+| `HorizonGateTest` | 4 | Basic auth required, wrong credentials, gate backstop |
+| `AdminDashboardTest` | 6 | Env-based credentials, no `admin:admin`, locked when unconfigured |
+| `AuthenticationTest` | 4 | Missing/invalid Api-Key, unconfigured key fails closed |
 | `CreateFlightTest` | 6 | Happy path, validation errors, data persistence |
-| `GetFlightTest` | 2 | Retrieval + 404 handling |
+| `GetFlightTest` | 3 | Retrieval, 404 for unknown and malformed ids |
 | `UpdateFlightTest` | 5 | Job dispatch, 204 response, actual data update, validation |
-| `IdempotencyTest` | 4 | Replay, exactly-once dispatch, concurrent race |
-| `CommandsTest` | 8 | flights:stats, flights:inspect, flights:purge-idempotency |
+| `ItineraryValidationTest` | 19 | Segment/leg sequence, timezone-aware times, airport codes, size caps, update matching |
+| `IdempotencyTest` | 7 | Replay, lock conflict (409), payload mismatch, per-flight scope, retry after failure |
+| `CommandsTest` | 4 | flights:stats, flights:inspect |
 | `RateLimitingTest` | 1 | 429 after exceeding threshold |
-| `PerformanceTest` | 6 | Endpoint latency budgets, P95 regression, large payloads |
+| `PerformanceTest` | 6 | Endpoint latency budgets, P95 regression, large payloads, write-free replays |
 | `ArchitectureTest` | 4 | Layer boundaries (controllers, models, jobs, services) |
 
 </details>
@@ -447,7 +327,7 @@ make cover                 # Coverage via Sail
 |----------|--------|--------|
 | `POST /api/flights` | < 200ms | Single create + 50-request sustained throughput (avg + P95) |
 | `GET /api/flights/{id}` | < 100ms | Normal + 10-leg/30-segment large payload |
-| `PUT /api/flights/{id}` | < 200ms | Dispatch latency + idempotency replay faster than first request |
+| `PUT /api/flights/{id}` | < 200ms | Dispatch latency; replays do no DB writes and dispatch no job |
 
 ### k6 load testing
 
@@ -515,7 +395,7 @@ make load-smoke             # Quick smoke test (1 VU, 10s)
 
 **Leg matching on update:** Legs are matched by **route signature** -- the ordered `origin→destination` chain of segments (e.g., `BCN>LON|LON>JFK`). This allows partial updates while correctly identifying which leg to modify.
 
-**Async updates:** The update endpoint validates input synchronously, stores the idempotency record, then dispatches an `UpdateFlightJob` to Redis. The job runs in Horizon with 3 retries and exponential backoff (5s, 30s, 60s).
+**Async updates:** The update endpoint validates input synchronously, takes a Redis idempotency lock, then dispatches an `UpdateFlightJob` to Redis. The job runs in Horizon with 3 retries and exponential backoff (5s, 30s, 60s). The flight row is locked (`SELECT ... FOR UPDATE`) while a job applies its changes, so concurrent updates are serialised.
 
 **Thin controllers:** Controllers handle HTTP concerns only. Business logic lives in `FlightService`.
 
@@ -544,7 +424,6 @@ $ sail artisan flights:stats
 | Flights             | 1              |
 | Legs                | 2              |
 | Segments            | 4              |
-| Idempotency records | 1              |
 | Avg legs/flight     | 2              |
 | Avg segments/leg    | 2              |
 | Last created        | 27 minutes ago |
@@ -578,26 +457,6 @@ $ sail artisan flights:inspect 019cb527-4564-73da-b8c2-65b369738eda
 | JFK  | LON | 2026-06-25 06:45 | 2026-06-25 10:55 | UA 101 | Y     |
 | LON  | BCN | 2026-06-25 11:55 | 2026-06-25 13:55 | UA 102 | Y     |
 +------+-----+------------------+------------------+--------+-------+
-```
-
-</details>
-
-<details>
-<summary><strong><code>flights:purge-idempotency</code></strong> -- Clean expired records</summary>
-
-```bash
-# Interactive
-$ sail artisan flights:purge-idempotency --hours=48
-
- Delete 12 idempotency records older than 48h? (yes/no) [no]:
- > yes
-
-  INFO  Purged 12 idempotency records.
-
-# Force (no confirmation -- for cron/scheduler)
-$ sail artisan flights:purge-idempotency --hours=24 --force
-
-  INFO  Purged 5 idempotency records.
 ```
 
 </details>
@@ -684,22 +543,23 @@ make logs       # Tail app logs
 app/
 ├── Console/Commands/
 │   ├── FlightInspect.php
-│   ├── FlightsStats.php
-│   └── PurgeIdempotencyKeys.php
+│   └── FlightsStats.php
 ├── Http/
 │   ├── Controllers/{FlightController,AdminController}.php
 │   ├── Middleware/{AuthenticateApiKey,BasicAuthAdmin}.php
-│   └── Requests/{Create,Update}FlightRequest.php
+│   └── Requests/{FlightPayload,CreateFlight,UpdateFlight}Request.php
 ├── Jobs/UpdateFlightJob.php
-├── Models/{Flight,Leg,Segment,IdempotentRequest}.php
+├── Models/{Flight,Leg,Segment}.php
 ├── Providers/{App,Horizon}ServiceProvider.php
-└── Services/FlightService.php
+├── Services/{Flight,Idempotency,Admin}Service.php
+└── Support/{AirportTimezones,ItineraryValidator}.php
 database/migrations/
+resources/data/airport-timezones.php   # IATA code -> IANA timezone (airports from mwgg/Airports, MIT)
 docs/media/                 # Screenshots (homepage.png, admin.png)
 openapi/openapi.json
 tests/
-├── Unit/{RouteSignature,FlightService,IdempotentRequest}Test.php
-├── Feature/{Authentication,CreateFlight,GetFlight,UpdateFlight,Idempotency,RateLimiting}Test.php
+├── Unit/{RouteSignature,FlightService,UpdateFlightJob,AdminService,HorizonGate}Test.php
+├── Feature/{Authentication,CreateFlight,GetFlight,UpdateFlight,ItineraryValidation,Idempotency,RateLimiting}Test.php
 ├── Feature/{Performance,Architecture}Test.php
 └── Load/k6-flights.js
 ```
