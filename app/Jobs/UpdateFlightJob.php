@@ -3,8 +3,8 @@
 namespace App\Jobs;
 
 use App\Models\Flight;
-use App\Models\IdempotentRequest;
 use App\Services\FlightService;
+use App\Services\IdempotencyService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -25,6 +25,11 @@ class UpdateFlightJob implements ShouldQueue
         public readonly array $legsData,
         public readonly string $idempotencyKey,
     ) {}
+
+    public static function idempotencyScope(string $flightId): string
+    {
+        return "PUT /api/flights/{$flightId}";
+    }
 
     public function handle(FlightService $service): void
     {
@@ -54,8 +59,6 @@ class UpdateFlightJob implements ShouldQueue
             'error' => $exception->getMessage(),
         ]);
 
-        IdempotentRequest::where('idempotency_key', $this->idempotencyKey)
-            ->where('route', "PUT /api/flights/{$this->flightId}")
-            ->delete();
+        app(IdempotencyService::class)->forget($this->idempotencyKey, self::idempotencyScope($this->flightId));
     }
 }

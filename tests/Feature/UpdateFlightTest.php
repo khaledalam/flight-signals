@@ -2,6 +2,7 @@
 
 use App\Jobs\UpdateFlightJob;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Str;
 
 use function Tests\apiHeaders;
 use function Tests\sampleLegs;
@@ -30,7 +31,7 @@ it('requires the Idempotency-Key header', function () {
 });
 
 it('returns 404 for a non-existent flight', function () {
-    $this->putJson('/api/flights/nonexistent-uuid', updatePayload(), apiHeaders([
+    $this->putJson('/api/flights/'.Str::uuid(), updatePayload(), apiHeaders([
         'Idempotency-Key' => 'idem-nope',
     ]))->assertStatus(404);
 });
@@ -61,5 +62,5 @@ it('actually updates segments when queue processes synchronously', function () {
 
     // Second leg should remain unchanged
     $get->assertJsonPath('legs.1.segments.0.origin', 'JFK');
-    $get->assertJsonPath('legs.1.segments.0.departure', '2026-06-25T06:45:00');
+    $get->assertJsonPath('legs.1.segments.0.departure', '2026-06-25T18:45:00');
 });

@@ -2,6 +2,11 @@
 
 use App\Services\FlightService;
 
+function adminAuth(): array
+{
+    return ['Authorization' => 'Basic '.base64_encode('test-admin:test-admin-password')];
+}
+
 it('requires basic auth credentials', function () {
     $this->get('/admin')
         ->assertStatus(401);
@@ -15,9 +20,7 @@ it('rejects wrong credentials', function () {
 });
 
 it('allows access with correct credentials', function () {
-    $this->withHeaders([
-        'Authorization' => 'Basic '.base64_encode('admin:admin'),
-    ])->get('/admin')
+    $this->withHeaders(adminAuth())->get('/admin')
         ->assertStatus(200)
         ->assertViewIs('admin');
 });
@@ -30,10 +33,22 @@ it('displays stats on the dashboard', function () {
         ]],
     ]);
 
-    $this->withHeaders([
-        'Authorization' => 'Basic '.base64_encode('admin:admin'),
-    ])->get('/admin')
+    $this->withHeaders(adminAuth())->get('/admin')
         ->assertStatus(200)
         ->assertSee('1') // flights count
         ->assertSee('BCN');
+});
+
+it('no longer accepts the old hardcoded admin:admin credentials', function () {
+    $this->withHeaders([
+        'Authorization' => 'Basic '.base64_encode('admin:admin'),
+    ])->get('/admin')
+        ->assertStatus(401);
+});
+
+it('denies access when admin credentials are not configured', function () {
+    config(['services.admin.username' => null, 'services.admin.password' => null]);
+
+    $this->withHeaders(adminAuth())->get('/admin')
+        ->assertStatus(401);
 });

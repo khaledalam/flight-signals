@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\Flight;
-use App\Models\IdempotentRequest;
 use App\Models\Leg;
 use App\Models\Segment;
 use Illuminate\Support\Collection;
@@ -17,7 +16,6 @@ class AdminService
             'flights' => Flight::count(),
             'legs' => Leg::count(),
             'segments' => Segment::count(),
-            'idempotency_records' => IdempotentRequest::count(),
         ];
     }
 

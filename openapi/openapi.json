@@ -26,7 +26,9 @@
         "operationId": "createFlight",
         "summary": "Create a flight",
         "description": "Creates a new Flight entity with nested Legs and Segments.",
-        "tags": ["Flights"],
+        "tags": [
+          "Flights"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -91,7 +93,9 @@
         "operationId": "getFlight",
         "summary": "Get a flight",
         "description": "Returns all legs and segments for the given flight.",
-        "tags": ["Flights"],
+        "tags": [
+          "Flights"
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/FlightId"
@@ -122,8 +126,10 @@
       "put": {
         "operationId": "updateFlight",
         "summary": "Update a flight (async)",
-        "description": "Dispatches an asynchronous update job. Legs are matched by their route signature (origin→destination chain). Requires an `Idempotency-Key` header to prevent duplicate processing.",
-        "tags": ["Flights"],
+        "description": "Dispatches an asynchronous update job. Legs are matched by their route signature (origin→destination chain); every leg in the payload must match an existing leg and the resulting itinerary must stay chronological. Requires an `Idempotency-Key` header: responses are stored in Redis for 24h, replays return the stored response, a concurrent request with the same key gets `409`, and reusing a key with a different payload gets `422`.",
+        "tags": [
+          "Flights"
+        ],
         "parameters": [
           {
             "$ref": "#/components/parameters/FlightId"
@@ -135,7 +141,8 @@
             "description": "A unique key to ensure the update is processed exactly once.",
             "schema": {
               "type": "string",
-              "example": "550e8400-e29b-41d4-a716-446655440000"
+              "example": "550e8400-e29b-41d4-a716-446655440000",
+              "maxLength": 255
             }
           }
         ],
@@ -158,6 +165,16 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "A request with the same Idempotency-Key is still being processed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "422": {
             "$ref": "#/components/responses/ValidationError"
@@ -192,26 +209,38 @@
     "schemas": {
       "Segment": {
         "type": "object",
-        "required": ["origin", "destination", "departure", "arrival", "cabinClass", "airline", "flightNumber"],
+        "required": [
+          "origin",
+          "destination",
+          "departure",
+          "arrival",
+          "cabinClass",
+          "airline",
+          "flightNumber"
+        ],
         "properties": {
           "origin": {
             "type": "string",
-            "maxLength": 10,
+            "pattern": "^[A-Z]{3}$",
+            "description": "IATA airport or metropolitan-area code. Must be known so its timezone can be resolved.",
             "example": "BCN"
           },
           "destination": {
             "type": "string",
-            "maxLength": 10,
+            "pattern": "^[A-Z]{3}$",
+            "description": "IATA airport or metropolitan-area code. Must be known so its timezone can be resolved.",
             "example": "LON"
           },
           "departure": {
             "type": "string",
-            "format": "date-time",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}$",
+            "description": "Local time at the origin airport, without offset. Arrival must be after departure once both are converted to UTC.",
             "example": "2026-06-09T06:45:00"
           },
           "arrival": {
             "type": "string",
-            "format": "date-time",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}$",
+            "description": "Local time at the destination airport, without offset. Arrival must be after departure once both are converted to UTC.",
             "example": "2026-06-09T10:55:00"
           },
           "cabinClass": {
@@ -233,40 +262,52 @@
       },
       "Leg": {
         "type": "object",
-        "required": ["segments"],
+        "required": [
+          "segments"
+        ],
         "properties": {
           "segments": {
             "type": "array",
             "minItems": 1,
             "items": {
               "$ref": "#/components/schemas/Segment"
-            }
+            },
+            "maxItems": 8,
+            "description": "Segments in order; each must depart after the previous one arrives."
           }
         }
       },
       "CreateFlightRequest": {
         "type": "object",
-        "required": ["legs"],
+        "required": [
+          "legs"
+        ],
         "properties": {
           "legs": {
             "type": "array",
             "minItems": 1,
             "items": {
               "$ref": "#/components/schemas/Leg"
-            }
+            },
+            "maxItems": 10,
+            "description": "Legs in chronological order; each must depart after the previous one arrives."
           }
         }
       },
       "UpdateFlightRequest": {
         "type": "object",
-        "required": ["legs"],
+        "required": [
+          "legs"
+        ],
         "properties": {
           "legs": {
             "type": "array",
             "minItems": 1,
             "items": {
               "$ref": "#/components/schemas/Leg"
-            }
+            },
+            "maxItems": 10,
+            "description": "Legs in chronological order; each must depart after the previous one arrives."
           }
         }
       },

@@ -2,27 +2,40 @@
 
 namespace App\Http\Requests;
 
-use Illuminate\Foundation\Http\FormRequest;
+use App\Models\Leg;
+use App\Services\FlightService;
+use App\Support\ItineraryValidator;
+use Illuminate\Validation\Validator;
 
-class UpdateFlightRequest extends FormRequest
+class UpdateFlightRequest extends FlightPayloadRequest
 {
-    public function authorize(): bool
+    protected function afterItinerary(Validator $validator): void
     {
-        return true;
-    }
+        $flight = $this->route('flight')->loadMissing('legs.segments');
+        $incomingLegs = $this->input('legs');
 
-    public function rules(): array
-    {
-        return [
-            'legs' => ['required', 'array', 'min:1'],
-            'legs.*.segments' => ['required', 'array', 'min:1'],
-            'legs.*.segments.*.origin' => ['required', 'string', 'max:10'],
-            'legs.*.segments.*.destination' => ['required', 'string', 'max:10'],
-            'legs.*.segments.*.departure' => ['required', 'date'],
-            'legs.*.segments.*.arrival' => ['required', 'date', 'after:legs.*.segments.*.departure'],
-            'legs.*.segments.*.cabinClass' => ['required', 'string', 'max:5'],
-            'legs.*.segments.*.airline' => ['required', 'string', 'max:10'],
-            'legs.*.segments.*.flightNumber' => ['required', 'string', 'max:20'],
-        ];
+        $matches = app(FlightService::class)->matchLegs($flight->legs, $incomingLegs);
+
+        foreach ($matches as $index => $leg) {
+            if (! $leg) {
+                $validator->errors()->add("legs.{$index}", 'No leg of this flight matches this route.');
+            }
+        }
+
+        if ($validator->errors()->isNotEmpty()) {
+            return;
+        }
+
+        $merged = $flight->legs->mapWithKeys(fn (Leg $leg) => [
+            $leg->id => ['segments' => $leg->segments->map->toPayload()->all()],
+        ])->all();
+
+        foreach ($matches as $index => $leg) {
+            $merged[$leg->id] = $incomingLegs[$index];
+        }
+
+        if (ItineraryValidator::errors(array_values($merged)) !== []) {
+            $validator->errors()->add('legs', 'The updated legs would overlap with the other legs of this flight.');
+        }
     }
 }

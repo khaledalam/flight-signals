@@ -248,10 +248,6 @@
                 <div class="stat-value green">{{ number_format($stats['segments']) }}</div>
             </div>
             <div class="stat-card">
-                <div class="stat-label">Idempotency Records</div>
-                <div class="stat-value">{{ number_format($stats['idempotency_records']) }}</div>
-            </div>
-            <div class="stat-card">
                 <div class="stat-label">Pending Jobs</div>
                 <div class="stat-value {{ $pendingJobs > 0 ? 'amber' : 'green' }}">{{ number_format($pendingJobs) }}</div>
             </div>

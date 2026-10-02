@@ -1,9 +1,13 @@
 <?php
 
+use App\Jobs\UpdateFlightJob;
+use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 
 use function Tests\apiHeaders;
 use function Tests\sampleLegs;
+use function Tests\segment;
 use function Tests\updatePayload;
 
 // Latency thresholds (milliseconds) — in-process test timings,
@@ -56,23 +60,21 @@ it('accepts an update within the latency budget', function () {
     );
 });
 
-it('returns idempotent replay faster than the original request', function () {
+it('serves idempotent replays without dispatching or writing to the database', function () {
     Queue::fake();
 
     $flightId = $this->postJson('/api/flights', sampleLegs(), apiHeaders())->json('flightId');
     $headers = apiHeaders(['Idempotency-Key' => 'perf-idem-1']);
 
-    $start1 = microtime(true);
     $this->putJson("/api/flights/{$flightId}", updatePayload(), $headers)->assertStatus(204);
-    $first = (microtime(true) - $start1) * 1000;
 
-    $start2 = microtime(true);
+    DB::enableQueryLog();
     $this->putJson("/api/flights/{$flightId}", updatePayload(), $headers)->assertStatus(204);
-    $replay = (microtime(true) - $start2) * 1000;
+    $writes = collect(DB::getQueryLog())
+        ->filter(fn (array $q) => preg_match('/^\s*(insert|update|delete)/i', $q['query']));
 
-    expect($replay)->toBeLessThan($first,
-        "Replay ({$replay}ms) should be faster than first request ({$first}ms)"
-    );
+    expect($writes)->toBeEmpty();
+    Queue::assertPushed(UpdateFlightJob::class, 1);
 });
 
 it('handles 50 sequential creates without degradation', function () {
@@ -100,19 +102,14 @@ it('handles 50 sequential creates without degradation', function () {
 
 it('retrieves a flight with many legs efficiently', function () {
     $legs = [];
-    $cities = ['BCN', 'LON', 'JFK', 'LAX', 'CDG', 'FRA', 'NRT', 'SIN', 'DXB', 'SYD', 'HKG'];
+    $cities = ['BCN', 'LON', 'JFK', 'LAX'];
+    $day = CarbonImmutable::parse('2026-07-01');
     for ($i = 0; $i < 10; $i++) {
         $segments = [];
         for ($j = 0; $j < 3; $j++) {
-            $segments[] = [
-                'origin' => $cities[$j],
-                'destination' => $cities[$j + 1],
-                'departure' => '2026-07-0'.($j + 1).'T06:00:00',
-                'arrival' => '2026-07-0'.($j + 1).'T10:00:00',
-                'cabinClass' => 'Y',
-                'airline' => 'UA',
-                'flightNumber' => (string) (100 + $i * 10 + $j),
-            ];
+            $date = $day->format('Y-m-d');
+            $segments[] = segment($cities[$j], $cities[$j + 1], "{$date}T12:00:00", "{$date}T23:00:00", (string) (100 + $i * 10 + $j));
+            $day = $day->addDay();
         }
         $legs[] = ['segments' => $segments];
     }

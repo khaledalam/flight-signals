@@ -105,8 +105,8 @@ function createPayload() {
           {
             origin: "JFK",
             destination: "LON",
-            departure: "2026-06-25T06:45:00",
-            arrival: "2026-06-25T10:55:00",
+            departure: "2026-06-25T18:45:00",
+            arrival: "2026-06-26T06:55:00",
             cabinClass: "Y",
             airline: "UA",
             flightNumber: "101",
@@ -114,8 +114,8 @@ function createPayload() {
           {
             origin: "LON",
             destination: "BCN",
-            departure: "2026-06-25T11:55:00",
-            arrival: "2026-06-25T13:55:00",
+            departure: "2026-06-26T08:55:00",
+            arrival: "2026-06-26T11:55:00",
             cabinClass: "Y",
             airline: "UA",
             flightNumber: "102",

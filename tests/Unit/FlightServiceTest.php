@@ -163,3 +163,26 @@ it('skips legs with no route match without error', function () {
     expect($flight->legs[0]->segments[0]->origin)->toBe('BCN');
     expect($flight->legs[0]->segments[0]->flight_number)->toBe('101');
 });
+
+it('matches each existing leg at most once when a route repeats', function () {
+    $commute = fn (string $date, string $number) => [
+        'segments' => [
+            ['origin' => 'BCN', 'destination' => 'LON', 'departure' => "{$date}T06:45:00", 'arrival' => "{$date}T08:55:00", 'cabinClass' => 'Y', 'airline' => 'UA', 'flightNumber' => $number],
+        ],
+    ];
+
+    $flight = $this->service->createFlight([$commute('2026-06-09', '101'), $commute('2026-06-16', '102')]);
+    $flight->load('legs.segments');
+
+    $matches = $this->service->matchLegs($flight->legs, [$commute('2026-06-10', '201'), $commute('2026-06-17', '202'), $commute('2026-06-18', '203')]);
+
+    expect($matches[0]->id)->toBe($flight->legs[0]->id)
+        ->and($matches[1]->id)->toBe($flight->legs[1]->id)
+        ->and($matches[2])->toBeNull();
+
+    $this->service->updateFlight($flight, [$commute('2026-06-10', '201'), $commute('2026-06-17', '202')]);
+    $flight->refresh()->load('legs.segments');
+
+    expect($flight->legs[0]->segments[0]->flight_number)->toBe('201')
+        ->and($flight->legs[1]->segments[0]->flight_number)->toBe('202');
+});
