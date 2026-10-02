@@ -1,11 +1,13 @@
 <?php
 
 use App\Jobs\UpdateFlightJob;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 
 use function Tests\apiHeaders;
 use function Tests\sampleLegs;
+use function Tests\segment;
 use function Tests\updatePayload;
 
 // Latency thresholds (milliseconds) — in-process test timings,
@@ -100,19 +102,14 @@ it('handles 50 sequential creates without degradation', function () {
 
 it('retrieves a flight with many legs efficiently', function () {
     $legs = [];
-    $cities = ['BCN', 'LON', 'JFK', 'LAX', 'CDG', 'FRA', 'NRT', 'SIN', 'DXB', 'SYD', 'HKG'];
+    $cities = ['BCN', 'LON', 'JFK', 'LAX'];
+    $day = CarbonImmutable::parse('2026-07-01');
     for ($i = 0; $i < 10; $i++) {
         $segments = [];
         for ($j = 0; $j < 3; $j++) {
-            $segments[] = [
-                'origin' => $cities[$j],
-                'destination' => $cities[$j + 1],
-                'departure' => '2026-07-0'.($j + 1).'T06:00:00',
-                'arrival' => '2026-07-0'.($j + 1).'T10:00:00',
-                'cabinClass' => 'Y',
-                'airline' => 'UA',
-                'flightNumber' => (string) (100 + $i * 10 + $j),
-            ];
+            $date = $day->format('Y-m-d');
+            $segments[] = segment($cities[$j], $cities[$j + 1], "{$date}T12:00:00", "{$date}T23:00:00", (string) (100 + $i * 10 + $j));
+            $day = $day->addDay();
         }
         $legs[] = ['segments' => $segments];
     }

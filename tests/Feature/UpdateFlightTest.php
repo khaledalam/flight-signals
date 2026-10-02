@@ -61,5 +61,5 @@ it('actually updates segments when queue processes synchronously', function () {
 
     // Second leg should remain unchanged
     $get->assertJsonPath('legs.1.segments.0.origin', 'JFK');
-    $get->assertJsonPath('legs.1.segments.0.departure', '2026-06-25T06:45:00');
+    $get->assertJsonPath('legs.1.segments.0.departure', '2026-06-25T18:45:00');
 });
