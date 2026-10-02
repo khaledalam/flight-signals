@@ -1,5 +1,6 @@
 <?php
 
+use App\Jobs\UpdateFlightJob;
 use Illuminate\Support\Facades\Queue;
 
 use function Tests\apiHeaders;
@@ -93,6 +94,38 @@ it('rejects legs sent as an object instead of a list', function () {
     $this->postJson('/api/flights', ['legs' => ['a' => sampleLegs()['legs'][0]]], apiHeaders())
         ->assertStatus(422)
         ->assertJsonValidationErrors(['legs']);
+});
+
+it('rejects an update leg that matches no existing leg instead of dropping it', function () {
+    Queue::fake();
+
+    $flightId = $this->postJson('/api/flights', sampleLegs(), apiHeaders())->json('flightId');
+
+    $this->putJson("/api/flights/{$flightId}", ['legs' => [['segments' => [
+        segment('BCN', 'CDG', '2026-06-09T06:45:00', '2026-06-09T08:55:00'),
+    ]]]], apiHeaders(['Idempotency-Key' => 'unmatched']))
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['legs.0']);
+
+    Queue::assertNotPushed(UpdateFlightJob::class);
+});
+
+it('rejects an update that would overlap the other legs of the flight', function () {
+    Queue::fake();
+
+    $flightId = $this->postJson('/api/flights', sampleLegs(), apiHeaders())->json('flightId');
+
+    $payload = updatePayload();
+    $payload['legs'][0]['segments'][0]['departure'] = '2026-06-27T06:40:00';
+    $payload['legs'][0]['segments'][0]['arrival'] = '2026-06-27T10:50:00';
+    $payload['legs'][0]['segments'][1]['departure'] = '2026-06-27T11:55:00';
+    $payload['legs'][0]['segments'][1]['arrival'] = '2026-06-27T14:55:00';
+
+    $this->putJson("/api/flights/{$flightId}", $payload, apiHeaders(['Idempotency-Key' => 'overlap']))
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['legs']);
+
+    Queue::assertNotPushed(UpdateFlightJob::class);
 });
 
 it('rejects an update whose segments are out of sequence', function () {

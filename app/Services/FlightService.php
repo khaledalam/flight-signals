@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Flight;
 use App\Models\Leg;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -37,28 +38,21 @@ class FlightService
         });
     }
 
-    /**
-     * Match incoming legs to existing ones by comparing the route signature
-     * (ordered origin→destination pairs of each segment).
-     */
     public function updateFlight(Flight $flight, array $legsData): void
     {
         DB::transaction(function () use ($flight, $legsData) {
+            Flight::whereKey($flight->id)->lockForUpdate()->first();
+
             $existingLegs = $flight->legs()->with('segments')->get();
 
-            foreach ($legsData as $incomingLeg) {
-                $incomingRoute = $this->buildRouteSignature($incomingLeg['segments']);
-                $matched = $existingLegs->first(
-                    fn (Leg $leg) => $this->buildRouteSignature(
-                        $leg->segments->map(fn ($s) => [
-                            'origin' => $s->origin,
-                            'destination' => $s->destination,
-                        ])->toArray()
-                    ) === $incomingRoute
-                );
+            foreach ($this->matchLegs($existingLegs, $legsData) as $index => $matched) {
+                $incomingLeg = $legsData[$index];
 
                 if (! $matched) {
-                    Log::warning('No matching leg found for route', ['route' => $incomingRoute, 'flight_id' => $flight->id]);
+                    Log::warning('No matching leg found for route', [
+                        'route' => $this->buildRouteSignature($incomingLeg['segments']),
+                        'flight_id' => $flight->id,
+                    ]);
 
                     continue;
                 }
@@ -82,6 +76,33 @@ class FlightService
                 Log::info('Leg updated', ['leg_id' => $matched->id, 'flight_id' => $flight->id]);
             }
         });
+    }
+
+    public function matchLegs(Collection $existingLegs, array $legsData): array
+    {
+        $available = $existingLegs->keyBy('id');
+        $matches = [];
+
+        foreach ($legsData as $index => $incomingLeg) {
+            $incomingRoute = $this->buildRouteSignature($incomingLeg['segments']);
+
+            $matched = $available->first(
+                fn (Leg $leg) => $this->buildRouteSignature(
+                    $leg->segments->map(fn ($s) => [
+                        'origin' => $s->origin,
+                        'destination' => $s->destination,
+                    ])->toArray()
+                ) === $incomingRoute
+            );
+
+            if ($matched) {
+                $available->forget($matched->id);
+            }
+
+            $matches[$index] = $matched;
+        }
+
+        return $matches;
     }
 
     /**
