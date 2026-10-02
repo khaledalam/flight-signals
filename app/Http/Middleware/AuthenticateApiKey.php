@@ -13,7 +13,8 @@ class AuthenticateApiKey
         $providedKey = $request->header('Api-Key');
         $expectedKey = config('services.api.key');
 
-        if (! $providedKey || ! hash_equals($expectedKey, $providedKey)) {
+        if (! is_string($expectedKey) || $expectedKey === ''
+            || ! is_string($providedKey) || ! hash_equals($expectedKey, $providedKey)) {
             return response()->json(['message' => 'Invalid or missing Api-Key.'], 401);
         }
 
