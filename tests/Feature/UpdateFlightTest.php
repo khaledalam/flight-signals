@@ -2,6 +2,7 @@
 
 use App\Jobs\UpdateFlightJob;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Str;
 
 use function Tests\apiHeaders;
 use function Tests\sampleLegs;
@@ -30,7 +31,7 @@ it('requires the Idempotency-Key header', function () {
 });
 
 it('returns 404 for a non-existent flight', function () {
-    $this->putJson('/api/flights/nonexistent-uuid', updatePayload(), apiHeaders([
+    $this->putJson('/api/flights/'.Str::uuid(), updatePayload(), apiHeaders([
         'Idempotency-Key' => 'idem-nope',
     ]))->assertStatus(404);
 });

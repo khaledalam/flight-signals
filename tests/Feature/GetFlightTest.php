@@ -1,5 +1,7 @@
 <?php
 
+use Illuminate\Support\Str;
+
 use function Tests\apiHeaders;
 use function Tests\sampleLegs;
 
@@ -21,7 +23,12 @@ it('returns all legs and segments for a flight', function () {
 });
 
 it('returns 404 for a non-existent flight', function () {
-    $this->getJson('/api/flights/nonexistent-uuid', apiHeaders())
+    $this->getJson('/api/flights/'.Str::uuid(), apiHeaders())
         ->assertStatus(404)
         ->assertJson(['message' => 'Flight not found.']);
+});
+
+it('returns 404 for a malformed flight id', function () {
+    $this->getJson('/api/flights/not-a-uuid', apiHeaders())
+        ->assertStatus(404);
 });

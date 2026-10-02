@@ -1,5 +1,7 @@
 <?php
 
+use Illuminate\Support\Str;
+
 use function Tests\sampleLegs;
 
 it('rejects requests without an Api-Key header', function () {
@@ -16,8 +18,10 @@ it('rejects requests with an incorrect Api-Key', function () {
 });
 
 it('blocks all endpoints without auth', function () {
-    $this->getJson('/api/flights/some-id')->assertStatus(401);
-    $this->putJson('/api/flights/some-id', [])->assertStatus(401);
+    $id = Str::uuid();
+
+    $this->getJson("/api/flights/{$id}")->assertStatus(401);
+    $this->putJson("/api/flights/{$id}", [])->assertStatus(401);
     $this->postJson('/api/flights', [])->assertStatus(401);
 });
 

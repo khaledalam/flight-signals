@@ -31,4 +31,17 @@ class Segment extends Model
     {
         return $this->belongsTo(Leg::class);
     }
+
+    public function toPayload(): array
+    {
+        return [
+            'origin' => $this->origin,
+            'destination' => $this->destination,
+            'departure' => $this->departure->format('Y-m-d\TH:i:s'),
+            'arrival' => $this->arrival->format('Y-m-d\TH:i:s'),
+            'cabinClass' => $this->cabin_class,
+            'airline' => $this->airline,
+            'flightNumber' => $this->flight_number,
+        ];
+    }
 }

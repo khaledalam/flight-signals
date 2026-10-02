@@ -5,6 +5,7 @@ use App\Http\Middleware\BasicAuthAdmin;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Routing\Middleware\SubstituteBindings;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -18,6 +19,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'auth.apikey' => AuthenticateApiKey::class,
             'auth.basic.admin' => BasicAuthAdmin::class,
         ]);
+
+        $middleware->prependToPriorityList(SubstituteBindings::class, AuthenticateApiKey::class);
 
         $middleware->throttleApi('api');
     })

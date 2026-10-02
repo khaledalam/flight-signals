@@ -25,14 +25,8 @@ class FlightController
         return response()->json(['flightId' => $flight->id], 201);
     }
 
-    public function update(UpdateFlightRequest $request, string $flightId): JsonResponse
+    public function update(UpdateFlightRequest $request, Flight $flight): JsonResponse
     {
-        $flight = Flight::find($flightId);
-
-        if (! $flight) {
-            return response()->json(['message' => 'Flight not found.'], 404);
-        }
-
         $idempotencyKey = $request->header('Idempotency-Key');
 
         if (! is_string($idempotencyKey) || $idempotencyKey === '') {
@@ -64,24 +58,10 @@ class FlightController
         return response()->json($response['body'], $response['status']);
     }
 
-    public function show(string $flightId): JsonResponse
+    public function show(Flight $flight): JsonResponse
     {
-        $flight = Flight::with('legs.segments')->find($flightId);
-
-        if (! $flight) {
-            return response()->json(['message' => 'Flight not found.'], 404);
-        }
-
-        $legs = $flight->legs->map(fn ($leg) => [
-            'segments' => $leg->segments->map(fn ($segment) => [
-                'origin' => $segment->origin,
-                'destination' => $segment->destination,
-                'departure' => $segment->departure->format('Y-m-d\TH:i:s'),
-                'arrival' => $segment->arrival->format('Y-m-d\TH:i:s'),
-                'cabinClass' => $segment->cabin_class,
-                'airline' => $segment->airline,
-                'flightNumber' => $segment->flight_number,
-            ])->values()->toArray(),
+        $legs = $flight->load('legs.segments')->legs->map(fn ($leg) => [
+            'segments' => $leg->segments->map->toPayload()->values()->toArray(),
         ])->values()->toArray();
 
         return response()->json(['legs' => $legs]);
