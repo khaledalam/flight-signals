@@ -6,9 +6,8 @@ use App\Http\Requests\CreateFlightRequest;
 use App\Http\Requests\UpdateFlightRequest;
 use App\Jobs\UpdateFlightJob;
 use App\Models\Flight;
-use App\Models\IdempotentRequest;
 use App\Services\FlightService;
-use Illuminate\Database\UniqueConstraintViolationException;
+use App\Services\IdempotencyService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
 
@@ -16,6 +15,7 @@ class FlightController
 {
     public function __construct(
         private readonly FlightService $flightService,
+        private readonly IdempotencyService $idempotency,
     ) {}
 
     public function store(CreateFlightRequest $request): JsonResponse
@@ -35,45 +35,33 @@ class FlightController
 
         $idempotencyKey = $request->header('Idempotency-Key');
 
-        if (! $idempotencyKey) {
+        if (! is_string($idempotencyKey) || $idempotencyKey === '') {
             return response()->json(['message' => 'Idempotency-Key header is required.'], 422);
         }
 
-        $route = "PUT /api/flights/{$flightId}";
-
-        $existing = IdempotentRequest::where('idempotency_key', $idempotencyKey)
-            ->where('route', $route)
-            ->first();
-
-        if ($existing) {
-            Log::info('Idempotency hit', ['key' => $idempotencyKey, 'route' => $route]);
-
-            return response()->json($existing->response_body, $existing->response_status);
+        if (strlen($idempotencyKey) > 255) {
+            return response()->json(['message' => 'Idempotency-Key header must not exceed 255 characters.'], 422);
         }
 
-        // Use insert-or-ignore to handle concurrent submissions safely.
-        // The unique(idempotency_key, route) constraint guarantees exactly-once.
-        try {
-            IdempotentRequest::create([
-                'idempotency_key' => $idempotencyKey,
-                'route' => $route,
-                'response_status' => 204,
-                'response_body' => null,
-            ]);
-        } catch (UniqueConstraintViolationException) {
-            Log::info('Idempotency race resolved', ['key' => $idempotencyKey]);
+        $legs = $request->validated()['legs'];
 
-            return response()->json(null, 204);
-        }
+        $response = $this->idempotency->execute(
+            $idempotencyKey,
+            UpdateFlightJob::idempotencyScope($flight->id),
+            hash('sha256', json_encode($legs)),
+            function () use ($flight, $legs, $idempotencyKey) {
+                UpdateFlightJob::dispatch($flight->id, $legs, $idempotencyKey);
 
-        UpdateFlightJob::dispatch($flightId, $request->validated()['legs'], $idempotencyKey);
+                Log::info('Update flight job dispatched', [
+                    'flight_id' => $flight->id,
+                    'idempotency_key' => $idempotencyKey,
+                ]);
 
-        Log::info('Update flight job dispatched', [
-            'flight_id' => $flightId,
-            'idempotency_key' => $idempotencyKey,
-        ]);
+                return ['status' => 204, 'body' => null];
+            },
+        );
 
-        return response()->json(null, 204);
+        return response()->json($response['body'], $response['status']);
     }
 
     public function show(string $flightId): JsonResponse

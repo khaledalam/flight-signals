@@ -19,8 +19,7 @@ it('returns correct stats', function () {
 
     expect($stats['flights'])->toBe(1)
         ->and($stats['legs'])->toBe(1)
-        ->and($stats['segments'])->toBe(2)
-        ->and($stats['idempotency_records'])->toBe(0);
+        ->and($stats['segments'])->toBe(2);
 });
 
 it('returns recent flights with relations', function () {

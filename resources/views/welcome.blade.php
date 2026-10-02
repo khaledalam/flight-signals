@@ -381,10 +381,6 @@
                 <span class="cmd">flights:inspect {id}</span>
                 <span class="cmd-desc">Display flight details</span>
             </div>
-            <div class="cmd-row">
-                <span class="cmd">flights:purge-idempotency</span>
-                <span class="cmd-desc">Clean expired keys</span>
-            </div>
         </div>
 
         <!-- Links -->

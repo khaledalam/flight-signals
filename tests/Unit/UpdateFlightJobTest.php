@@ -1,9 +1,10 @@
 <?php
 
 use App\Jobs\UpdateFlightJob;
-use App\Models\IdempotentRequest;
 use App\Services\FlightService;
+use App\Services\IdempotencyService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 uses(RefreshDatabase::class);
@@ -43,23 +44,18 @@ it('processes the update when flight exists', function () {
     expect($flight->legs[0]->segments[0]->departure->format('H:i'))->toBe('07:00');
 });
 
-it('cleans up idempotency record on permanent failure', function () {
+it('forgets the idempotency key on permanent failure', function () {
     $flightId = 'test-flight-uuid';
     $idempotencyKey = 'fail-key';
+    $service = app(IdempotencyService::class);
+    $cacheKey = $service->cacheKey($idempotencyKey, UpdateFlightJob::idempotencyScope($flightId));
 
-    IdempotentRequest::create([
-        'idempotency_key' => $idempotencyKey,
-        'route' => "PUT /api/flights/{$flightId}",
-        'response_status' => 204,
-        'response_body' => null,
-    ]);
-
-    expect(IdempotentRequest::count())->toBe(1);
+    Cache::put($cacheKey, ['fingerprint' => 'x', 'response' => ['status' => 204, 'body' => null]]);
 
     Log::shouldReceive('error')->once()->withArgs(fn ($msg) => str_contains($msg, 'permanently failed'));
 
     $job = new UpdateFlightJob($flightId, [], $idempotencyKey);
     $job->failed(new \RuntimeException('Something broke'));
 
-    expect(IdempotentRequest::count())->toBe(0);
+    expect(Cache::has($cacheKey))->toBeFalse();
 });

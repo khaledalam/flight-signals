@@ -1,6 +1,8 @@
 <?php
 
 use App\Jobs\UpdateFlightJob;
+use App\Services\IdempotencyService;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 
 use function Tests\apiHeaders;
@@ -15,76 +17,74 @@ it('returns the same response on idempotency replay without re-dispatching', fun
 
     $headers = apiHeaders(['Idempotency-Key' => 'unique-key-abc']);
 
-    $first = $this->putJson("/api/flights/{$flightId}", updatePayload(), $headers);
-    $first->assertStatus(204);
-
-    $second = $this->putJson("/api/flights/{$flightId}", updatePayload(), $headers);
-    $second->assertStatus(204);
+    $this->putJson("/api/flights/{$flightId}", updatePayload(), $headers)->assertStatus(204);
+    $this->putJson("/api/flights/{$flightId}", updatePayload(), $headers)->assertStatus(204);
 
     Queue::assertPushed(UpdateFlightJob::class, 1);
-    $this->assertDatabaseCount('idempotent_requests', 1);
 });
 
-it('handles concurrent duplicate gracefully via unique constraint', function () {
+it('returns 409 while another request holds the lock for the same key', function () {
     Queue::fake();
 
     $flightId = $this->postJson('/api/flights', sampleLegs(), apiHeaders())
         ->json('flightId');
 
-    $route = "PUT /api/flights/{$flightId}";
+    $cacheKey = app(IdempotencyService::class)
+        ->cacheKey('race-key', UpdateFlightJob::idempotencyScope($flightId));
 
-    // Pre-insert so the SELECT finds it — covers the early-return path
-    \App\Models\IdempotentRequest::create([
-        'idempotency_key' => 'race-key',
-        'route' => $route,
-        'response_status' => 204,
-        'response_body' => null,
-    ]);
+    $lock = Cache::lock("{$cacheKey}:lock", 10);
+    expect($lock->get())->toBeTrue();
 
-    $response = $this->putJson("/api/flights/{$flightId}", updatePayload(), apiHeaders([
+    $this->putJson("/api/flights/{$flightId}", updatePayload(), apiHeaders([
         'Idempotency-Key' => 'race-key',
-    ]));
+    ]))->assertStatus(409);
 
-    $response->assertStatus(204);
     Queue::assertNotPushed(UpdateFlightJob::class);
+
+    $lock->release();
+
+    $this->putJson("/api/flights/{$flightId}", updatePayload(), apiHeaders([
+        'Idempotency-Key' => 'race-key',
+    ]))->assertStatus(204);
+
+    Queue::assertPushed(UpdateFlightJob::class, 1);
 });
 
-it('catches UniqueConstraintViolation when race passes the SELECT', function () {
+it('rejects reusing a key with a different payload', function () {
     Queue::fake();
 
     $flightId = $this->postJson('/api/flights', sampleLegs(), apiHeaders())
         ->json('flightId');
 
-    $route = "PUT /api/flights/{$flightId}";
+    $headers = apiHeaders(['Idempotency-Key' => 'reused-key']);
 
-    // Simulate: another process inserted the record between our SELECT and INSERT.
-    // We use a DB listener to insert the record right before the controller's INSERT fires.
-    $intercepted = false;
-    \Illuminate\Support\Facades\DB::listen(function ($query) use ($route, &$intercepted) {
-        // After the SELECT (which returns null), insert the record before the controller's INSERT
-        if (! $intercepted && str_contains($query->sql, 'select') && str_contains($query->sql, 'idempotent_requests')) {
-            $intercepted = true;
-            \Illuminate\Support\Facades\DB::table('idempotent_requests')->insert([
-                'idempotency_key' => 'race-catch-key',
-                'route' => $route,
-                'response_status' => 204,
-                'response_body' => null,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-        }
-    });
+    $this->putJson("/api/flights/{$flightId}", updatePayload(), $headers)->assertStatus(204);
 
-    $response = $this->putJson("/api/flights/{$flightId}", updatePayload(), apiHeaders([
-        'Idempotency-Key' => 'race-catch-key',
-    ]));
+    $changed = updatePayload();
+    $changed['legs'][0]['segments'][0]['departure'] = '2026-06-09T06:30:00';
 
-    $response->assertStatus(204);
-    // The catch block should have prevented the job from being dispatched
-    Queue::assertNotPushed(UpdateFlightJob::class);
+    $this->putJson("/api/flights/{$flightId}", $changed, $headers)
+        ->assertStatus(422)
+        ->assertJson(['message' => 'This Idempotency-Key was already used with a different payload.']);
+
+    Queue::assertPushed(UpdateFlightJob::class, 1);
 });
 
-it('stores the idempotency record with correct data', function () {
+it('scopes keys per flight', function () {
+    Queue::fake();
+
+    $first = $this->postJson('/api/flights', sampleLegs(), apiHeaders())->json('flightId');
+    $second = $this->postJson('/api/flights', sampleLegs(), apiHeaders())->json('flightId');
+
+    $headers = apiHeaders(['Idempotency-Key' => 'shared-key']);
+
+    $this->putJson("/api/flights/{$first}", updatePayload(), $headers)->assertStatus(204);
+    $this->putJson("/api/flights/{$second}", updatePayload(), $headers)->assertStatus(204);
+
+    Queue::assertPushed(UpdateFlightJob::class, 2);
+});
+
+it('stores the response in the cache, not the database', function () {
     Queue::fake();
 
     $flightId = $this->postJson('/api/flights', sampleLegs(), apiHeaders())
@@ -92,10 +92,37 @@ it('stores the idempotency record with correct data', function () {
 
     $this->putJson("/api/flights/{$flightId}", updatePayload(), apiHeaders([
         'Idempotency-Key' => 'track-me',
-    ]));
+    ]))->assertStatus(204);
 
-    $this->assertDatabaseHas('idempotent_requests', [
-        'idempotency_key' => 'track-me',
-        'response_status' => 204,
-    ]);
+    $cacheKey = app(IdempotencyService::class)
+        ->cacheKey('track-me', UpdateFlightJob::idempotencyScope($flightId));
+
+    expect(Cache::get($cacheKey)['response'])->toBe(['status' => 204, 'body' => null]);
+});
+
+it('allows a retry with the same key after the job permanently fails', function () {
+    Queue::fake();
+
+    $flightId = $this->postJson('/api/flights', sampleLegs(), apiHeaders())
+        ->json('flightId');
+
+    $headers = apiHeaders(['Idempotency-Key' => 'retry-key']);
+
+    $this->putJson("/api/flights/{$flightId}", updatePayload(), $headers)->assertStatus(204);
+
+    (new UpdateFlightJob($flightId, updatePayload()['legs'], 'retry-key'))
+        ->failed(new RuntimeException('Something broke'));
+
+    $this->putJson("/api/flights/{$flightId}", updatePayload(), $headers)->assertStatus(204);
+
+    Queue::assertPushed(UpdateFlightJob::class, 2);
+});
+
+it('rejects an overly long Idempotency-Key', function () {
+    $flightId = $this->postJson('/api/flights', sampleLegs(), apiHeaders())
+        ->json('flightId');
+
+    $this->putJson("/api/flights/{$flightId}", updatePayload(), apiHeaders([
+        'Idempotency-Key' => str_repeat('k', 256),
+    ]))->assertStatus(422);
 });

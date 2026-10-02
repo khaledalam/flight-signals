@@ -19,6 +19,11 @@ return [
         'rate_limit' => env('API_RATE_LIMIT', 200),
     ],
 
+    'idempotency' => [
+        'ttl' => env('IDEMPOTENCY_TTL', 86400),
+        'lock_seconds' => env('IDEMPOTENCY_LOCK_SECONDS', 10),
+    ],
+
     'admin' => [
         'username' => env('ADMIN_USERNAME'),
         'password' => env('ADMIN_PASSWORD'),
